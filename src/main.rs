@@ -1,8 +1,32 @@
-use anyhow::{Error, Result};
-use reqwest::{Client, header};
+use reqwest::Client;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 use std::{collections::HashSet, path::Path};
 
 pub mod models;
+
+// All possible section headers (index in the array = section_index).
+// Keep the order, because the function uses it to find the next header.
+const ALL_SECTIONS: [&str; 17] = [
+    "Company Details",
+    "Business Details",
+    "Particulars of Stated Capital",
+    "Certificate (Issued by Other Institutions)",
+    "Office Bearers",
+    "Shareholders",
+    "Members (Applicable for Company Limited by Guarantee or Shares and Guarantee)",
+    "Annual Return filed for last 3 years",
+    "Financial Summary/Statements filed for last 3 years",
+    "Last Financial Summary Filed",
+    "Profit and Loss Statement",
+    "Balance Sheet",
+    "Charges",
+    "Removal/Winding Up Details",
+    "Objections",
+    "Last Annual Registration Fee Paid",
+    "Extract of file with additional comments",
+];
 
 fn get_text_from_pdf(pdf_path: &str) -> String {
     let bytes = std::fs::read(pdf_path).unwrap();
@@ -14,31 +38,9 @@ fn get_text_from_pdf(pdf_path: &str) -> String {
 /// * `section_index` – index of the section in `ALL_SECTIONS` (0‑based).
 /// * `pdf_text` – the full plain‑text of the PDF (passed by reference).
 ///
-/// The function returns the section’s text **without** the section header itself.  
+/// The function returns the section’s text **with** the section header itself.  
 /// If the requested section is not found the returned string is empty.
 pub fn extract_section(section_index: usize, pdf_text: &str) -> String {
-    // All possible section headers (index in the array = section_index).
-    // Keep the order, because the function uses it to find the next header.
-    const ALL_SECTIONS: [&str; 17] = [
-        "Company Details",
-        "Business Details", 
-        "Particulars of Stated Capital",
-        "Certificate (Issued by Other Institutions)",
-        "Office Bearers",
-        "Shareholders",
-        "Members (Applicable for Company Limited by Guarantee or Shares and Guarantee)",
-        "Annual Return filed for last 3 years",
-        "Financial Summary/Statements filed for last 3 years",
-        "Last Financial Summary Filed",
-        "Profit and Loss Statement",
-        "Balance Sheet",
-        "Charges",
-        "Removal/Winding Up Details",
-        "Objections",
-        "Last Annual Registration Fee Paid",
-        "Extract of file with additional comments",
-    ];
-
     // Guard against out‑of‑range indices; if the caller passes an
     // invalid index we just return an empty string.
     if section_index >= ALL_SECTIONS.len() {
@@ -83,6 +85,69 @@ pub fn extract_section(section_index: usize, pdf_text: &str) -> String {
     result.trim_end().to_string()
 }
 
+/// Extracts each section from the PDF and writes the result to a Markdown file.
+///
+/// # Arguments
+/// * `pdf_path` – Path to the source PDF.
+///
+/// # Returns
+/// * `Ok(())` on success; otherwise the I/O error that occurred.
+///
+/// # Example
+/// ```ignore
+/// test_section_extraction_to_markdown("my‑company.pdf")?;
+/// ```
+pub fn test_section_extraction_to_markdown(pdf_path: &str) -> std::io::Result<()> {
+    // --------------------------------------------------------------
+    // 1️⃣  Load the whole PDF as text
+    // --------------------------------------------------------------
+    let pdf_text = get_text_from_pdf(pdf_path);
+
+    // --------------------------------------------------------------
+    // 2️⃣  Build the Markdown content
+    // --------------------------------------------------------------
+    let mut md = String::new();
+
+    // File‑name for the table of contents / header
+    let pdf_name = Path::new(pdf_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+
+    md.push_str(&format!("# Extracted Sections from `{}`\n\n", pdf_name));
+
+    for (idx, _) in ALL_SECTIONS.iter().enumerate() {
+        // `extract_section` expects a `u8` – cast safely
+        let section_body = extract_section(idx, &pdf_text);
+
+        // Skip empty sections to keep the Markdown tidy
+        if section_body.trim().is_empty() {
+            continue;
+        }
+
+        // Level‑2 heading
+        md.push_str(&format!("## {}\n\n", ALL_SECTIONS[idx]));
+
+        // Body – preserve line breaks
+        md.push_str(&section_body);
+        md.push('\n');
+        md.push_str("\n---\n\n"); // horizontal rule for visual separation
+    }
+
+    // --------------------------------------------------------------
+    // 3️⃣  Write the Markdown file
+    // --------------------------------------------------------------
+    // Determine an output path: same folder, .md extension
+    let mut out_path = PathBuf::from(pdf_path);
+    out_path.set_extension("md");
+
+    let mut file = File::create(&out_path)?;
+    file.write_all(md.as_bytes())?;
+
+    println!("Markdown written to {}", out_path.display());
+    Ok(())
+}
+
 // removes irrelevant details from a pdf
 fn filter_irrelevant_details(pdf_text: String) -> String {
     pdf_text
@@ -94,8 +159,8 @@ fn text_to_structured_format() {
 }
 
 fn main() {
-    let pdf_text = get_text_from_pdf("pdf/16.pdf");
-        // println!("{}\n\n", pdf_text);
-
-    println!("{}", extract_section(5, &pdf_text));
+    // let pdf_text = get_text_from_pdf("pdf/77.pdf");
+    // println!("{}\n\n", pdf_text);
+    test_section_extraction_to_markdown("pdf/77.pdf");
+    // println!("{}", extract_section(4, &pdf_text));
 }
