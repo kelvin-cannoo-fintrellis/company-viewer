@@ -1,9 +1,12 @@
 use reqwest::Client;
+use serde_json::Value;
+use std::error::Error;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::{collections::HashSet, path::Path};
 
+use crate::models::{OllamaRequest, OllamaResponse};
 pub mod models;
 
 // All possible section headers (index in the array = section_index).
@@ -148,6 +151,45 @@ pub fn test_section_extraction_to_markdown(pdf_path: &str) -> std::io::Result<()
     Ok(())
 }
 
+/// Sends section content to a local Ollama LLM and asks it to return JSON
+pub async fn parse_section_with_ollama(
+    client: &Client,
+    section_content: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let prompt = format!(
+        r#"
+You are a data extraction engine.
+Parse the following section and return ONLY valid JSON.
+Do not include explanations, markdown, or extra text.
+
+Section:
+{}
+"#,
+        section_content
+    );
+
+    let request = OllamaRequest {
+        model: "qwen2.5:7b",
+        prompt: &prompt,
+        stream: false,
+        format: "json"
+    };
+
+    let res = client
+        .post("http://localhost:11434/api/generate")
+        .json(&request)
+        .send()
+        .await?
+        .error_for_status()?;
+
+    let ollama_res: OllamaResponse = res.json().await?;
+
+    // Ollama returns JSON *as text*, so parse again
+    let parsed_json: Value = serde_json::from_str(ollama_res.response.trim())?;
+
+    Ok(parsed_json)
+}
+
 // removes irrelevant details from a pdf
 fn filter_irrelevant_details(pdf_text: String) -> String {
     pdf_text
@@ -158,9 +200,23 @@ fn text_to_structured_format() {
     let client: Client = Client::builder().build().unwrap();
 }
 
-fn main() {
-    // let pdf_text = get_text_from_pdf("pdf/77.pdf");
-    // println!("{}\n\n", pdf_text);
-    test_section_extraction_to_markdown("pdf/77.pdf");
-    // println!("{}", extract_section(4, &pdf_text));
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client::new();
+
+    let pdf_text = get_text_from_pdf("pdf/77.pdf");
+    let section = extract_section(4, &pdf_text); // Office Bearers
+
+    if section.trim().is_empty() {
+        println!("Section empty");
+        return Ok(());
+    }
+
+    let json = parse_section_with_ollama(&client, &section).await?;
+
+    println!("Structured JSON:\n{}", serde_json::to_string_pretty(&json)?);
+
+    Ok(())
+
+    // test_section_extraction_to_markdown("pdf/77.pdf");
 }

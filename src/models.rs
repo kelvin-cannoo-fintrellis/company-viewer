@@ -1,5 +1,18 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize)]
+pub struct OllamaRequest<'a> {
+    pub model: &'a str,
+    pub prompt: &'a str,
+    pub stream: bool,
+    pub format: &'a str
+}
+
+#[derive(Deserialize)]
+pub struct OllamaResponse {
+    pub response: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanyData {
