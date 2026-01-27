@@ -5,7 +5,7 @@ pub struct OllamaRequest<'a> {
     pub model: &'a str,
     pub prompt: &'a str,
     pub stream: bool,
-    pub format: &'a str
+    pub format: &'a str,
 }
 
 #[derive(Deserialize)]

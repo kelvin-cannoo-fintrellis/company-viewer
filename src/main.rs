@@ -101,13 +101,10 @@ pub fn extract_section(section_index: usize, pdf_text: &str) -> String {
 /// test_section_extraction_to_markdown("my‑company.pdf")?;
 /// ```
 pub fn test_section_extraction_to_markdown(pdf_path: &str) -> std::io::Result<()> {
-    // --------------------------------------------------------------
-    // 1️⃣  Load the whole PDF as text
-    // --------------------------------------------------------------
     let pdf_text = get_text_from_pdf(pdf_path);
 
     // --------------------------------------------------------------
-    // 2️⃣  Build the Markdown content
+    // Build the Markdown content
     // --------------------------------------------------------------
     let mut md = String::new();
 
@@ -138,7 +135,7 @@ pub fn test_section_extraction_to_markdown(pdf_path: &str) -> std::io::Result<()
     }
 
     // --------------------------------------------------------------
-    // 3️⃣  Write the Markdown file
+    // Write the Markdown file
     // --------------------------------------------------------------
     // Determine an output path: same folder, .md extension
     let mut out_path = PathBuf::from(pdf_path);
@@ -172,7 +169,7 @@ Section:
         model: "qwen2.5:7b",
         prompt: &prompt,
         stream: false,
-        format: "json"
+        format: "json",
     };
 
     let res = client
@@ -188,16 +185,6 @@ Section:
     let parsed_json: Value = serde_json::from_str(ollama_res.response.trim())?;
 
     Ok(parsed_json)
-}
-
-// removes irrelevant details from a pdf
-fn filter_irrelevant_details(pdf_text: String) -> String {
-    pdf_text
-}
-
-// make an api call to ollama local model
-fn text_to_structured_format() {
-    let client: Client = Client::builder().build().unwrap();
 }
 
 #[tokio::main]
