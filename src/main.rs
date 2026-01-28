@@ -173,19 +173,23 @@ where
         format!(
             r#"You are a data extraction engine.
 
+IMPORTANT RULES:
+- If a value is missing, unknown, or unclear, return an EMPTY STRING "".
+- DO NOT use placeholder text ("Not provided", "Unknown", etc).
+- DO NOT include explanations as values.
+- Return ONLY valid JSON.
+
 The following section represents a TABLE with these columns:
 1. Business Name
 2. Nature of Business
 3. Principal Place of Business
 
-Rules:
-- Each logical row starts with either a Business Name OR a single "." character.
-- If a row starts with ".", the Business Name is empty. Store the value EXACTLY as ".".
-- Rows may span multiple lines; merge wrapped lines into the same row.
-- Ignore headers, repeated titles, page numbers, registration numbers, dates, and footers.
-- Do NOT invent or infer missing values.
-- Preserve text as-is (except for line merging).
-- Return ONLY valid JSON matching the provided schema.
+Table rules:
+- Each logical row starts with either a Business Name or a single "." character.
+- If a row starts with ".", the Business Name is empty. Store it EXACTLY as ".".
+- Rows may span multiple lines; merge wrapped lines into one row.
+- Ignore headers, repeated titles, registration numbers, page numbers, dates, and footers.
+- Do not invent or infer data.
 
 Section:
 {}"#,
@@ -194,9 +198,14 @@ Section:
     } else {
         format!(
             r#"You are a data extraction engine.
-Extract information from the following "{}" section and return it in the specified JSON format.
-Be precise and extract all available information.
-Return ONLY valid JSON.
+
+IMPORTANT RULES:
+- If a value is missing, unknown, or unclear, return an EMPTY STRING "".
+- DO NOT use placeholder text ("Not provided", "Unknown", etc).
+- DO NOT include explanations as values.
+- Return ONLY valid JSON.
+
+Extract information from the following "{}" section.
 
 Section:
 {}"#,
