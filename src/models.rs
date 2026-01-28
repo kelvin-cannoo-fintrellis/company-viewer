@@ -1,26 +1,53 @@
+use schemars::{schema_for, JsonSchema as SchemarsJsonSchema};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+// Chat API models
+#[derive(Serialize)]
+pub struct OllamaChatRequest<'a> {
+    pub model: &'a str,
+    pub messages: Vec<Message<'a>>,
+    pub stream: bool,
+    pub format: Value,
+}
 
 #[derive(Serialize)]
-pub struct OllamaRequest<'a> {
-    pub model: &'a str,
-    pub prompt: &'a str,
-    pub stream: bool,
-    pub format: &'a str,
+pub struct Message<'a> {
+    pub role: &'a str,
+    pub content: &'a str,
 }
 
 #[derive(Deserialize)]
-pub struct OllamaResponse {
-    pub response: String,
+pub struct OllamaChatResponse {
+    pub message: MessageResponse,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Deserialize)]
+pub struct MessageResponse {
+    pub content: String,
+}
+
+// Trait for types that can provide their JSON schema
+pub trait JsonSchema {
+    fn schema() -> Value;
+}
+
+// Blanket implementation for any type that implements schemars::JsonSchema
+impl<T: SchemarsJsonSchema> JsonSchema for T {
+    fn schema() -> Value {
+        let schema = schema_for!(T);
+        serde_json::to_value(schema).unwrap()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanyData {
     pub organisation_info: OrganisationInfo,
     pub view_all: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OrganisationInfo {
     pub company_details: CompanyDetails,
@@ -44,7 +71,7 @@ pub struct OrganisationInfo {
     pub profit_and_loss: ProfitAndLoss,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanyDetails {
     pub org_no: String,
@@ -67,7 +94,7 @@ pub struct CompanyDetails {
     pub winding_up_status: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BusinessDetails {
     pub bus_file_no: String,
@@ -81,7 +108,13 @@ pub struct BusinessDetails {
     pub bus_reg_dt: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BusinessDetailsList {
+    pub business_details: Vec<BusinessDetails>,
+}
+
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StatedCapital {
     pub share_type: String,
@@ -92,7 +125,13 @@ pub struct StatedCapital {
     pub amount_unpaid: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StatedCapitalList {
+    pub stated_capitals: Vec<StatedCapital>,
+}
+
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Certificate {
     pub certif: String,
@@ -101,7 +140,13 @@ pub struct Certificate {
     pub expiry_date: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CertificateList {
+    pub certificates: Vec<Certificate>,
+}
+
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OfficeBearer {
     pub position: String,
@@ -111,7 +156,13 @@ pub struct OfficeBearer {
     pub entity_type: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OfficeBearerList {
+    pub office_bearers: Vec<OfficeBearer>,
+}
+
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ShareHolder {
     pub name: String,
@@ -121,7 +172,13 @@ pub struct ShareHolder {
     pub entity_type: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareHolderList {
+    pub share_holders: Vec<ShareHolder>,
+}
+
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Financial {
     pub financial_year_ended_date: String,
@@ -129,7 +186,7 @@ pub struct Financial {
     pub date_approved: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnualReturn {
     pub annual_return_date: String,
@@ -137,13 +194,19 @@ pub struct AnnualReturn {
     pub filed_date: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnualReturnList {
+    pub annual_returns: Vec<AnnualReturn>,
+}
+
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RegistrationFee {
     pub amount: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BalanceSheet {
     pub non_current_assets: NonCurrentAssets,
@@ -156,7 +219,7 @@ pub struct BalanceSheet {
     pub unit: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NonCurrentAssets {
     pub prop_plant_equip: i64,
@@ -169,7 +232,7 @@ pub struct NonCurrentAssets {
     pub total_non_current: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentAssets {
     pub inventories: i64,
@@ -180,7 +243,7 @@ pub struct CurrentAssets {
     pub total_assets_current_assets: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EquityAndLiabilities {
     pub share_capital: i64,
@@ -190,7 +253,7 @@ pub struct EquityAndLiabilities {
     pub total_equi: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NonCurrentLiabilities {
     pub long_term_borrow: i64,
@@ -200,7 +263,7 @@ pub struct NonCurrentLiabilities {
     pub total_non_current_liab: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentLiabilities {
     pub trade_and_other_pay: i64,
@@ -213,7 +276,7 @@ pub struct CurrentLiabilities {
     pub total_equity_and_liab: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SchemarsJsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfitAndLoss {
     pub turnover: i64,

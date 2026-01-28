@@ -1,4 +1,5 @@
 use reqwest::Client;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::error::Error;
 use std::fs::File;
@@ -6,7 +7,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::{collections::HashSet, path::Path};
 
-use crate::models::{OllamaRequest, OllamaResponse};
+use crate::models::*;
 pub mod models;
 
 // All possible section headers (index in the array = section_index).
@@ -36,12 +37,12 @@ fn get_text_from_pdf(pdf_path: &str) -> String {
     pdf_extract::extract_text_from_mem(&bytes).unwrap()
 }
 
-/// Extracts the content of a given section from a PDF’s text representation.
+/// Extracts the content of a given section from a PDF's text representation.
 ///
 /// * `section_index` – index of the section in `ALL_SECTIONS` (0‑based).
 /// * `pdf_text` – the full plain‑text of the PDF (passed by reference).
 ///
-/// The function returns the section’s text **with** the section header itself.  
+/// The function returns the section's text **with** the section header itself.  
 /// If the requested section is not found the returned string is empty.
 pub fn extract_section(section_index: usize, pdf_text: &str) -> String {
     // Guard against out‑of‑range indices; if the caller passes an
@@ -148,43 +149,170 @@ pub fn test_section_extraction_to_markdown(pdf_path: &str) -> std::io::Result<()
     Ok(())
 }
 
-/// Sends section content to a local Ollama LLM and asks it to return JSON
-pub async fn parse_section_with_ollama(
+/// Parse a section with structured output using Ollama's chat API
+///
+/// # Type Parameters
+/// * `T` - The type to deserialize the response into. Must implement DeserializeOwned and JsonSchema
+///
+/// # Arguments
+/// * `client` - HTTP client for making requests
+/// * `section_content` - The text content of the section to parse
+/// * `section_name` - Human-readable name of the section for context
+///
+/// # Returns
+/// * `Result<T, Box<dyn Error>>` - Parsed and typed response or error
+pub async fn parse_section_with_structured_output<T>(
     client: &Client,
     section_content: &str,
-) -> Result<Value, Box<dyn Error>> {
+    section_name: &str,
+) -> Result<T, Box<dyn Error>>
+where
+    T: DeserializeOwned + JsonSchema,
+{
     let prompt = format!(
-        r#"
-You are a data extraction engine.
-Parse the following section and return ONLY valid JSON.
-Do not include explanations, markdown, or extra text.
+        r#"You are a data extraction engine.
+Extract information from the following "{}" section and return it in the specified JSON format.
+Be precise and extract all available information.
 
 Section:
-{}
-"#,
-        section_content
+{}"#,
+        section_name, section_content
     );
 
-    let request = OllamaRequest {
+    let schema = T::schema();
+
+    let request = OllamaChatRequest {
         model: "qwen2.5:7b",
-        prompt: &prompt,
+        messages: vec![Message {
+            role: "user",
+            content: &prompt,
+        }],
         stream: false,
-        format: "json",
+        format: schema,
     };
 
     let res = client
-        .post("http://localhost:11434/api/generate")
+        .post("http://localhost:11434/api/chat")
         .json(&request)
         .send()
         .await?
         .error_for_status()?;
 
-    let ollama_res: OllamaResponse = res.json().await?;
+    let chat_response: OllamaChatResponse = res.json().await?;
 
-    // Ollama returns JSON *as text*, so parse again
-    let parsed_json: Value = serde_json::from_str(ollama_res.response.trim())?;
+    // Parse the content into the target type
+    let parsed: T = serde_json::from_str(&chat_response.message.content)?;
 
-    Ok(parsed_json)
+    Ok(parsed)
+}
+
+/// Section parser enum to dispatch parsing based on section type
+pub enum SectionParser {
+    CompanyDetails,
+    BusinessDetails,
+    StatedCapital,
+    Certificates,
+    OfficeBearers,
+    ShareHolders,
+    AnnualReturns,
+    RegistrationFee,
+    BalanceSheet,
+    ProfitAndLoss,
+}
+
+impl SectionParser {
+    /// Get the appropriate parser for a section index
+    pub fn from_section_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(SectionParser::CompanyDetails),
+            1 => Some(SectionParser::BusinessDetails),
+            2 => Some(SectionParser::StatedCapital),
+            3 => Some(SectionParser::Certificates),
+            4 => Some(SectionParser::OfficeBearers),
+            5 => Some(SectionParser::ShareHolders),
+            7 => Some(SectionParser::AnnualReturns),
+            10 => Some(SectionParser::ProfitAndLoss),
+            11 => Some(SectionParser::BalanceSheet),
+            15 => Some(SectionParser::RegistrationFee),
+            _ => None,
+        }
+    }
+
+    /// Get the section name for a section index
+    pub fn section_name(index: usize) -> &'static str {
+        ALL_SECTIONS.get(index).unwrap_or(&"Unknown Section")
+    }
+
+    /// Parse the section content using the appropriate parser
+    pub async fn parse(
+        &self,
+        client: &Client,
+        section_content: &str,
+        section_name: &str,
+    ) -> Result<Value, Box<dyn Error>> {
+        match self {
+            SectionParser::CompanyDetails => {
+                let result: CompanyDetails =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+            SectionParser::BusinessDetails => {
+                let result: BusinessDetailsList =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+            SectionParser::StatedCapital => {
+                let result: StatedCapitalList =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+            SectionParser::Certificates => {
+                let result: CertificateList =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+            SectionParser::OfficeBearers => {
+                let result: OfficeBearerList =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+            SectionParser::ShareHolders => {
+                let result: ShareHolderList =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+            SectionParser::AnnualReturns => {
+                let result: AnnualReturnList =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+            SectionParser::RegistrationFee => {
+                let result: RegistrationFee =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+            SectionParser::BalanceSheet => {
+                let result: BalanceSheet =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+            SectionParser::ProfitAndLoss => {
+                let result: ProfitAndLoss =
+                    parse_section_with_structured_output(client, section_content, section_name)
+                        .await?;
+                Ok(serde_json::to_value(result)?)
+            }
+        }
+    }
 }
 
 #[tokio::main]
@@ -192,18 +320,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
 
     let pdf_text = get_text_from_pdf("pdf/77.pdf");
-    let section = extract_section(4, &pdf_text); // Office Bearers
+
+    // Example 1: Parse Office Bearers section
+    let section_index = 4; // Office Bearers
+    let section = extract_section(section_index, &pdf_text);
 
     if section.trim().is_empty() {
-        println!("Section empty");
-        return Ok(());
+        println!("Section {} is empty", SectionParser::section_name(section_index));
+    } else {
+        println!("Parsing section: {}", SectionParser::section_name(section_index));
+        
+        if let Some(parser) = SectionParser::from_section_index(section_index) {
+            let json = parser
+                .parse(&client, &section, SectionParser::section_name(section_index))
+                .await?;
+
+            println!("Structured JSON:\n{}", serde_json::to_string_pretty(&json)?);
+        } else {
+            println!("No parser available for section index {}", section_index);
+        }
     }
 
-    let json = parse_section_with_ollama(&client, &section).await?;
-
-    println!("Structured JSON:\n{}", serde_json::to_string_pretty(&json)?);
+    // Example 2: Parse multiple sections
+    println!("\n\n=== Parsing Multiple Sections ===\n");
+    
+    let sections_to_parse = vec![0, 4, 5]; // Company Details, Office Bearers, ShareHolders
+    
+    for section_index in sections_to_parse {
+        let section = extract_section(section_index, &pdf_text);
+        
+        if section.trim().is_empty() {
+            println!("Section {} is empty\n", SectionParser::section_name(section_index));
+            continue;
+        }
+        
+        println!("Parsing section: {}", SectionParser::section_name(section_index));
+        
+        if let Some(parser) = SectionParser::from_section_index(section_index) {
+            match parser
+                .parse(&client, &section, SectionParser::section_name(section_index))
+                .await
+            {
+                Ok(json) => {
+                    println!("Success! Preview:\n{}\n", 
+                        serde_json::to_string_pretty(&json)
+                            .unwrap_or_else(|_| "Error formatting JSON".to_string())
+                            .lines()
+                            .take(10)
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    );
+                }
+                Err(e) => {
+                    println!("Error parsing section: {}\n", e);
+                }
+            }
+        }
+    }
 
     Ok(())
-
-    // test_section_extraction_to_markdown("pdf/77.pdf");
 }
