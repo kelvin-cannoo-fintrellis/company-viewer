@@ -229,7 +229,8 @@ impl SectionParser {
             2 => Some(SectionParser::StatedCapital),
             3 => Some(SectionParser::Certificates),
             4 => Some(SectionParser::OfficeBearers),
-            5 => Some(SectionParser::ShareHolders),
+            5 => Some(SectionParser::ShareHolders), 
+            // Note: index 6 belongs to the Members section and is always empty. We ignore it.
             7 => Some(SectionParser::AnnualReturns),
             10 => Some(SectionParser::ProfitAndLoss),
             11 => Some(SectionParser::BalanceSheet),
