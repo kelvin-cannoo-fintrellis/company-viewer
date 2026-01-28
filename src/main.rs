@@ -169,20 +169,45 @@ pub async fn parse_section_with_structured_output<T>(
 where
     T: DeserializeOwned + JsonSchema,
 {
-    let prompt = format!(
-        r#"You are a data extraction engine.
-Extract information from the following "{}" section and return it in the specified JSON format.
-Be precise and extract all available information.
+    let prompt = if section_name == "Business Details" {
+        format!(
+            r#"You are a data extraction engine.
+
+The following section represents a TABLE with these columns:
+1. Business Name
+2. Nature of Business
+3. Principal Place of Business
+
+Rules:
+- Each logical row starts with either a Business Name OR a single "." character.
+- If a row starts with ".", the Business Name is empty. Store the value EXACTLY as ".".
+- Rows may span multiple lines; merge wrapped lines into the same row.
+- Ignore headers, repeated titles, page numbers, registration numbers, dates, and footers.
+- Do NOT invent or infer missing values.
+- Preserve text as-is (except for line merging).
+- Return ONLY valid JSON matching the provided schema.
 
 Section:
 {}"#,
-        section_name, section_content
-    );
+            section_content
+        )
+    } else {
+        format!(
+            r#"You are a data extraction engine.
+Extract information from the following "{}" section and return it in the specified JSON format.
+Be precise and extract all available information.
+Return ONLY valid JSON.
+
+Section:
+{}"#,
+            section_name, section_content
+        )
+    };
 
     let schema = T::schema();
 
     let request = OllamaChatRequest {
-        model: "qwen2.5:1.5b",
+        model: "qwen2.5:3b",
         messages: vec![Message {
             role: "user",
             content: &prompt,
@@ -337,6 +362,28 @@ fn output_key_and_value(section_index: usize, json: Value) -> Option<(String, Va
     Some((key.to_string(), value))
 }
 
+fn build_markdown_for_pdf(pdf_name: &str, pdf_text: &str, sections_to_parse: &[usize]) -> String {
+    let mut md = String::new();
+
+    md.push_str(&format!("# Extracted Sections from `{}`\n\n", pdf_name));
+
+    for &idx in sections_to_parse {
+        let section_name = ALL_SECTIONS.get(idx).unwrap_or(&"Unknown Section");
+
+        let section = extract_section(idx, pdf_text);
+
+        if section.trim().is_empty() {
+            continue;
+        }
+
+        md.push_str(&format!("## {}\n\n", section_name));
+        md.push_str(&section);
+        md.push_str("\n\n---\n\n");
+    }
+
+    md
+}
+
 /// Process all PDFs in a directory and save parsed sections to JSON files
 ///
 /// # Arguments
@@ -348,11 +395,13 @@ fn output_key_and_value(section_index: usize, json: Value) -> Option<(String, Va
 pub async fn process_pdfs_in_directory(
     input_dir: &str,
     output_dir: &str,
+    markdown_dir: &str,
 ) -> Result<(), Box<dyn Error>> {
     let client = Client::new();
-    std::fs::create_dir_all(output_dir)?;
 
-    // Company Details, Business Details, Office Bearers, Shareholders
+    std::fs::create_dir_all(output_dir)?;
+    std::fs::create_dir_all(markdown_dir)?;
+
     let sections_to_parse = [0, 1, 4, 5];
 
     for entry in std::fs::read_dir(input_dir)? {
@@ -369,6 +418,7 @@ pub async fn process_pdfs_in_directory(
 
         let pdf_text = get_text_from_pdf(pdf_path);
 
+        // ---------------- JSON ----------------
         let mut pdf_data = serde_json::Map::new();
         pdf_data.insert(
             "filename".to_string(),
@@ -380,7 +430,6 @@ pub async fn process_pdfs_in_directory(
             let section_name = SectionParser::section_name(section_index);
 
             if section_text.trim().is_empty() {
-                println!("  - {} is empty", section_name);
                 continue;
             }
 
@@ -392,20 +441,24 @@ pub async fn process_pdfs_in_directory(
                         if let Some((key, value)) = output_key_and_value(section_index, json) {
                             pdf_data.insert(key, value);
                         }
-                        println!("    ✓ Success");
                     }
                     Err(e) => {
-                        println!("    ✗ Error: {}", e);
+                        println!("  ✗ {} parse error: {}", section_name, e);
                     }
                 }
             }
         }
 
-        let output_path = format!("{}/{}.json", output_dir, pdf_filename);
-        let json_string = serde_json::to_string_pretty(&pdf_data)?;
-        std::fs::write(&output_path, json_string)?;
+        let json_path = format!("{}/{}.json", output_dir, pdf_filename);
+        std::fs::write(&json_path, serde_json::to_string_pretty(&pdf_data)?)?;
 
-        println!("  ✓ Saved to {}\n", output_path);
+        // ---------------- MARKDOWN ----------------
+        let markdown = build_markdown_for_pdf(pdf_filename, &pdf_text, &sections_to_parse);
+        let md_path = format!("{}/{}.md", markdown_dir, pdf_filename);
+        std::fs::write(&md_path, markdown)?;
+
+        println!("  ✓ JSON saved to {}", json_path);
+        println!("  ✓ Markdown saved to {}\n", md_path);
     }
 
     Ok(())
@@ -415,7 +468,7 @@ pub async fn process_pdfs_in_directory(
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Usage example: process all PDFs in the 'pdf' directory
     // and save results to 'output_json' directory
-    process_pdfs_in_directory("pdf", "output_json").await?;
+    process_pdfs_in_directory("pdf", "output_json", "output_markdown").await?;
 
     Ok(())
 }
