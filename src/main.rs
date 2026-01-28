@@ -182,7 +182,7 @@ Section:
     let schema = T::schema();
 
     let request = OllamaChatRequest {
-        model: "qwen2.5:7b",
+        model: "qwen2.5:1.5b",
         messages: vec![Message {
             role: "user",
             content: &prompt,
@@ -323,29 +323,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pdf_text = get_text_from_pdf("pdf/77.pdf");
 
     // Example 1: Parse Office Bearers section
-    let section_index = 4; // Office Bearers
-    let section = extract_section(section_index, &pdf_text);
+    // let section_index = 4; // Office Bearers
+    // let section = extract_section(section_index, &pdf_text);
 
-    if section.trim().is_empty() {
-        println!("Section {} is empty", SectionParser::section_name(section_index));
-    } else {
-        println!("Parsing section: {}", SectionParser::section_name(section_index));
+    // if section.trim().is_empty() {
+    //     println!("Section {} is empty", SectionParser::section_name(section_index));
+    // } else {
+    //     println!("Parsing section: {}", SectionParser::section_name(section_index));
         
-        if let Some(parser) = SectionParser::from_section_index(section_index) {
-            let json = parser
-                .parse(&client, &section, SectionParser::section_name(section_index))
-                .await?;
+    //     if let Some(parser) = SectionParser::from_section_index(section_index) {
+    //         let json = parser
+    //             .parse(&client, &section, SectionParser::section_name(section_index))
+    //             .await?;
 
-            println!("Structured JSON:\n{}", serde_json::to_string_pretty(&json)?);
-        } else {
-            println!("No parser available for section index {}", section_index);
-        }
-    }
+    //         println!("Structured JSON:\n{}", serde_json::to_string_pretty(&json)?);
+    //     } else {
+    //         println!("No parser available for section index {}", section_index);
+    //     }
+    // }
 
     // Example 2: Parse multiple sections
     println!("\n\n=== Parsing Multiple Sections ===\n");
     
-    let sections_to_parse = vec![0, 4, 5]; // Company Details, Office Bearers, ShareHolders
+    let sections_to_parse = vec![0, 1, 4, 5]; // Company Details, BusinessDetails, Office Bearers, ShareHolders
     
     for section_index in sections_to_parse {
         let section = extract_section(section_index, &pdf_text);
