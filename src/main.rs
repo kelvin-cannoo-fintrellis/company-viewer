@@ -229,7 +229,7 @@ impl SectionParser {
             2 => Some(SectionParser::StatedCapital),
             3 => Some(SectionParser::Certificates),
             4 => Some(SectionParser::OfficeBearers),
-            5 => Some(SectionParser::ShareHolders), 
+            5 => Some(SectionParser::ShareHolders),
             // Note: index 6 belongs to the Members section and is always empty. We ignore it.
             7 => Some(SectionParser::AnnualReturns),
             10 => Some(SectionParser::ProfitAndLoss),
@@ -316,6 +316,27 @@ impl SectionParser {
     }
 }
 
+fn output_key_and_value(section_index: usize, json: Value) -> Option<(String, Value)> {
+    let key = match section_index {
+        0 => "companyDetails",
+        1 => "businessDetails",
+        4 => "officeBearers",
+        5 => "shareHolders",
+        _ => return None,
+    };
+
+    let value = match json {
+        Value::Object(obj) if obj.len() == 1 => {
+            // Extract the only value safely
+            let (_, v) = obj.into_iter().next().unwrap();
+            v
+        }
+        other => other,
+    };
+
+    Some((key.to_string(), value))
+}
+
 /// Process all PDFs in a directory and save parsed sections to JSON files
 ///
 /// # Arguments
@@ -329,78 +350,64 @@ pub async fn process_pdfs_in_directory(
     output_dir: &str,
 ) -> Result<(), Box<dyn Error>> {
     let client = Client::new();
-    
-    // Create output directory if it doesn't exist
     std::fs::create_dir_all(output_dir)?;
-    
-    // Sections to parse: Company Details, Business Details, Office Bearers, ShareHolders
-    let sections_to_parse = vec![0, 1, 4, 5];
-    
-    // Read all PDF files in the input directory
-    let entries = std::fs::read_dir(input_dir)?;
-    
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        
-        // Skip if not a PDF file
-        if !path.extension().map_or(false, |ext| ext == "pdf") {
+
+    // Company Details, Business Details, Office Bearers, Shareholders
+    let sections_to_parse = [0, 1, 4, 5];
+
+    for entry in std::fs::read_dir(input_dir)? {
+        let path = entry?.path();
+
+        if path.extension().map_or(true, |e| e != "pdf") {
             continue;
         }
-        
+
         let pdf_path = path.to_str().unwrap();
         let pdf_filename = path.file_stem().unwrap().to_str().unwrap();
-        
+
         println!("Processing: {}", pdf_filename);
-        
-        // Extract text from PDF
+
         let pdf_text = get_text_from_pdf(pdf_path);
-        
-        // Store all parsed sections for this PDF
+
         let mut pdf_data = serde_json::Map::new();
-        pdf_data.insert("filename".to_string(), Value::String(pdf_filename.to_string()));
-        
-        // Parse each section
-        for section_index in &sections_to_parse {
-            let section = extract_section(*section_index, &pdf_text);
-            let section_name = SectionParser::section_name(*section_index);
-            
-            if section.trim().is_empty() {
+        pdf_data.insert(
+            "filename".to_string(),
+            Value::String(pdf_filename.to_string()),
+        );
+
+        for &section_index in &sections_to_parse {
+            let section_text = extract_section(section_index, &pdf_text);
+            let section_name = SectionParser::section_name(section_index);
+
+            if section_text.trim().is_empty() {
                 println!("  - {} is empty", section_name);
-                pdf_data.insert(
-                    section_name.to_string(),
-                    Value::Null
-                );
                 continue;
             }
-            
+
             println!("  - Parsing {}", section_name);
-            
-            if let Some(parser) = SectionParser::from_section_index(*section_index) {
-                match parser.parse(&client, &section, section_name).await {
+
+            if let Some(parser) = SectionParser::from_section_index(section_index) {
+                match parser.parse(&client, &section_text, section_name).await {
                     Ok(json) => {
-                        pdf_data.insert(section_name.to_string(), json);
+                        if let Some((key, value)) = output_key_and_value(section_index, json) {
+                            pdf_data.insert(key, value);
+                        }
                         println!("    ✓ Success");
                     }
                     Err(e) => {
                         println!("    ✗ Error: {}", e);
-                        pdf_data.insert(
-                            section_name.to_string(),
-                            Value::String(format!("Error: {}", e))
-                        );
                     }
                 }
             }
         }
-        
-        // Save to JSON file
+
         let output_path = format!("{}/{}.json", output_dir, pdf_filename);
         let json_string = serde_json::to_string_pretty(&pdf_data)?;
         std::fs::write(&output_path, json_string)?;
-        
+
         println!("  ✓ Saved to {}\n", output_path);
     }
-    
+
     Ok(())
 }
 
@@ -409,6 +416,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Usage example: process all PDFs in the 'pdf' directory
     // and save results to 'output_json' directory
     process_pdfs_in_directory("pdf", "output_json").await?;
-    
+
     Ok(())
 }
