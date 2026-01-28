@@ -316,68 +316,99 @@ impl SectionParser {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// Process all PDFs in a directory and save parsed sections to JSON files
+///
+/// # Arguments
+/// * `input_dir` - Directory containing PDF files to process
+/// * `output_dir` - Directory where JSON output files will be saved
+///
+/// # Returns
+/// * `Result<(), Box<dyn Error>>` - Success or error
+pub async fn process_pdfs_in_directory(
+    input_dir: &str,
+    output_dir: &str,
+) -> Result<(), Box<dyn Error>> {
     let client = Client::new();
-
-    let pdf_text = get_text_from_pdf("pdf/77.pdf");
-
-    // Example 1: Parse Office Bearers section
-    // let section_index = 4; // Office Bearers
-    // let section = extract_section(section_index, &pdf_text);
-
-    // if section.trim().is_empty() {
-    //     println!("Section {} is empty", SectionParser::section_name(section_index));
-    // } else {
-    //     println!("Parsing section: {}", SectionParser::section_name(section_index));
-        
-    //     if let Some(parser) = SectionParser::from_section_index(section_index) {
-    //         let json = parser
-    //             .parse(&client, &section, SectionParser::section_name(section_index))
-    //             .await?;
-
-    //         println!("Structured JSON:\n{}", serde_json::to_string_pretty(&json)?);
-    //     } else {
-    //         println!("No parser available for section index {}", section_index);
-    //     }
-    // }
-
-    // Example 2: Parse multiple sections
-    println!("\n\n=== Parsing Multiple Sections ===\n");
     
-    let sections_to_parse = vec![0, 1, 4, 5]; // Company Details, BusinessDetails, Office Bearers, ShareHolders
+    // Create output directory if it doesn't exist
+    std::fs::create_dir_all(output_dir)?;
     
-    for section_index in sections_to_parse {
-        let section = extract_section(section_index, &pdf_text);
+    // Sections to parse: Company Details, Business Details, Office Bearers, ShareHolders
+    let sections_to_parse = vec![0, 1, 4, 5];
+    
+    // Read all PDF files in the input directory
+    let entries = std::fs::read_dir(input_dir)?;
+    
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
         
-        if section.trim().is_empty() {
-            println!("Section {} is empty\n", SectionParser::section_name(section_index));
+        // Skip if not a PDF file
+        if !path.extension().map_or(false, |ext| ext == "pdf") {
             continue;
         }
         
-        println!("Parsing section: {}", SectionParser::section_name(section_index));
+        let pdf_path = path.to_str().unwrap();
+        let pdf_filename = path.file_stem().unwrap().to_str().unwrap();
         
-        if let Some(parser) = SectionParser::from_section_index(section_index) {
-            match parser
-                .parse(&client, &section, SectionParser::section_name(section_index))
-                .await
-            {
-                Ok(json) => {
-                    println!("Success! Preview:\n{}\n", 
-                        serde_json::to_string_pretty(&json)
-                            .unwrap_or_else(|_| "Error formatting JSON".to_string())
-                            .lines()
-                            .take(10)
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    );
-                }
-                Err(e) => {
-                    println!("Error parsing section: {}\n", e);
+        println!("Processing: {}", pdf_filename);
+        
+        // Extract text from PDF
+        let pdf_text = get_text_from_pdf(pdf_path);
+        
+        // Store all parsed sections for this PDF
+        let mut pdf_data = serde_json::Map::new();
+        pdf_data.insert("filename".to_string(), Value::String(pdf_filename.to_string()));
+        
+        // Parse each section
+        for section_index in &sections_to_parse {
+            let section = extract_section(*section_index, &pdf_text);
+            let section_name = SectionParser::section_name(*section_index);
+            
+            if section.trim().is_empty() {
+                println!("  - {} is empty", section_name);
+                pdf_data.insert(
+                    section_name.to_string(),
+                    Value::Null
+                );
+                continue;
+            }
+            
+            println!("  - Parsing {}", section_name);
+            
+            if let Some(parser) = SectionParser::from_section_index(*section_index) {
+                match parser.parse(&client, &section, section_name).await {
+                    Ok(json) => {
+                        pdf_data.insert(section_name.to_string(), json);
+                        println!("    ✓ Success");
+                    }
+                    Err(e) => {
+                        println!("    ✗ Error: {}", e);
+                        pdf_data.insert(
+                            section_name.to_string(),
+                            Value::String(format!("Error: {}", e))
+                        );
+                    }
                 }
             }
         }
+        
+        // Save to JSON file
+        let output_path = format!("{}/{}.json", output_dir, pdf_filename);
+        let json_string = serde_json::to_string_pretty(&pdf_data)?;
+        std::fs::write(&output_path, json_string)?;
+        
+        println!("  ✓ Saved to {}\n", output_path);
     }
+    
+    Ok(())
+}
 
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Usage example: process all PDFs in the 'pdf' directory
+    // and save results to 'output_json' directory
+    process_pdfs_in_directory("pdf", "output_json").await?;
+    
     Ok(())
 }
