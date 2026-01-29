@@ -27,22 +27,6 @@ reqwest = { version = "0.12", features = ["json", "gzip", "stream"] }
 # JSON Schema
 schemars = "0.8"
 
-# Database (optional, uncomment when ready to implement)
-# sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros", "migrate"], optional = true }
-
-# Web framework (optional, uncomment when ready to implement)
-# axum = { version = "0.7", optional = true }
-# tower = { version = "0.4", optional = true }
-# tower-http = { version = "0.5", features = ["cors", "trace"], optional = true }
-
 [dev-dependencies]
 tokio-test = "0.4"
 
-[features]
-default = []
-# Uncomment when implementing database
-# db = ["sqlx"]
-# Uncomment when implementing REST API
-# api = ["axum", "tower", "tower-http"]
-# Full feature set
-# full = ["db", "api"]
