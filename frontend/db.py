@@ -3,13 +3,22 @@ from pathlib import Path
 
 DB_PATH = Path("companies.db")
 
+
 def get_conn():
+    # Prevent SQLite from auto-creating database
+    if not DB_PATH.exists():
+        raise FileNotFoundError(
+            f"Database file not found: {DB_PATH.resolve()}"
+        )
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_db():
-    conn = get_conn()
+    # Only call this when BUILDING the database, not in the UI
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute("""
@@ -28,4 +37,3 @@ def init_db():
 
     conn.commit()
     conn.close()
-
