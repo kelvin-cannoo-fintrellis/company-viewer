@@ -1,64 +1,162 @@
 import sys
-import os
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTableWidget,
-    QTableWidgetItem
+    QTableWidgetItem, QLabel, QComboBox, QMessageBox
 )
-from db import get_conn, init_db
+from db import get_conn
+
 
 class App(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Company Search")
-        self.resize(700, 400)
+        self.setWindowTitle("Company & Office Bearer Search")
+        self.resize(900, 500)
 
-        self.layout = QVBoxLayout(self)
+        layout = QVBoxLayout(self)
+
+        # Status label
+        self.status = QLabel("Ready")
+        layout.addWidget(self.status)
+
+        # Search controls row
+        controls = QHBoxLayout()
+
+        self.search_type = QComboBox()
+        self.search_type.addItems([
+            "Company Name (Fuzzy)",
+            "Office Bearer Name",
+            "Office Bearer Country"
+        ])
+        controls.addWidget(self.search_type)
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search companies...")
-        self.layout.addWidget(self.search)
+        self.search.setPlaceholderText("Type search text...")
+        self.search.returnPressed.connect(self.run_search)  # ENTER key triggers search
+        self.search.setFocus() # auto-focus search bar on startup
+        self.search.textChanged.connect(self.run_search) # live search while typing
+
+        controls.addWidget(self.search)
 
         self.btn = QPushButton("Search")
         self.btn.clicked.connect(self.run_search)
-        self.layout.addWidget(self.btn)
+        controls.addWidget(self.btn)
 
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["Name", "Industry", "PDF"])
-        self.table.cellDoubleClicked.connect(self.open_pdf)
-        self.layout.addWidget(self.table)
+        layout.addLayout(controls)
 
-        init_db()
+        # Results table
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels([
+            "Company",
+            "Office Bearer",
+            "Country",
+            "Position"
+        ])
+        layout.addWidget(self.table)
+
+        # Verify database exists on startup
+        self.db_ok = self.check_db()
+
+    def check_db(self):
+        """Ensure database exists and is readable."""
+        try:
+            conn = get_conn()
+            conn.execute("SELECT 1")
+            conn.close()
+            self.status.setText("Database loaded successfully")
+            return True
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Database Error",
+                "Database could not be loaded.\n\n"
+                "Please ensure the database file exists.\n\n"
+                f"Details:\n{e}"
+            )
+
+            self.status.setText("Database missing or invalid")
+            self.btn.setEnabled(False)
+            return False
 
     def run_search(self):
-        query = self.search.text()
-        conn = get_conn()
-        cur = conn.cursor()
+        if not self.db_ok:
+            QMessageBox.warning(self, "Database Error", "Database is not available")
+            return
 
-        cur.execute("""
-        SELECT c.name, c.industry, c.pdf_path
-        FROM company_fts f
-        JOIN company c ON c.id = f.rowid
-        WHERE company_fts MATCH ?
-        """, (query,))
+        query = self.search.text().strip()
 
-        rows = cur.fetchall()
-        conn.close()
+        if not query:
+            # QMessageBox.warning(self, "Input Needed", "Please enter search text")
+            return
 
+        try:
+            conn = get_conn()
+            cur = conn.cursor()
+        except Exception as e:
+            QMessageBox.critical(self, "Database Error", f"Could not open DB:\n{e}")
+            return
+
+        mode = self.search_type.currentText()
+
+        try:
+            # 1️⃣ Company Name (FUZZY)
+            if mode.startswith("Company Name"):
+                cur.execute("""
+                SELECT c.org_name, NULL, NULL, NULL
+                FROM company c
+                WHERE c.org_name LIKE ?
+                   OR c.former_name LIKE ?
+                ORDER BY c.org_name
+                LIMIT 300
+                """, (f"%{query}%", f"%{query}%"))
+
+            # 2️⃣ Office Bearer Name (FUZZY)
+            elif mode == "Office Bearer Name":
+                cur.execute("""
+                SELECT c.org_name, ob.name, ob.country, ob.position
+                FROM office_bearer ob
+                JOIN company c ON c.id = ob.company_id
+                WHERE ob.name LIKE ?
+                ORDER BY ob.name
+                LIMIT 300
+                """, (f"%{query}%",))
+
+            # 3️⃣ Office Bearer Country
+            else:
+                cur.execute("""
+                SELECT c.org_name, ob.name, ob.country, ob.position
+                FROM office_bearer ob
+                JOIN company c ON c.id = ob.company_id
+                WHERE ob.country LIKE ?
+                ORDER BY c.org_name
+                LIMIT 300
+                """, (f"%{query}%",))
+
+            rows = cur.fetchall()
+            conn.close()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Search Error", f"Search failed:\n{e}")
+            return
+
+        # Clear & fill table
+        self.table.setRowCount(0)
+
+        if not rows:
+            self.status.setText("No results found")
+            return
+
+        self.status.setText(f"{len(rows)} result(s) found")
         self.table.setRowCount(len(rows))
-        for r, row in enumerate(rows):
-            self.table.setItem(r, 0, QTableWidgetItem(row["name"]))
-            self.table.setItem(r, 1, QTableWidgetItem(row["industry"]))
-            self.table.setItem(r, 2, QTableWidgetItem(row["pdf_path"]))
 
-    def open_pdf(self, row, col):
-        path = self.table.item(row, 2).text()
-        if os.path.exists(path):
-            os.startfile(path)
+        for r, row in enumerate(rows):
+            for c in range(4):
+                self.table.setItem(r, c, QTableWidgetItem(str(row[c] or "")))
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = App()
     window.show()
     sys.exit(app.exec())
-
