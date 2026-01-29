@@ -1,13 +1,48 @@
 [package]
 name = "company-pdf-viewer"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+
+[lib]
+name = "company_pdf_viewer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "process-pdfs"
+path = "src/main.rs"
 
 [dependencies]
+# Core dependencies
 anyhow = "1.0"
-pdf-extract = "0.10.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
+
+# PDF processing
+pdf-extract = "0.10.0"
+
+# HTTP client for Ollama
 reqwest = { version = "0.12", features = ["json", "gzip", "stream"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# JSON Schema
 schemars = "0.8"
+
+# Database (optional, uncomment when ready to implement)
+# sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros", "migrate"], optional = true }
+
+# Web framework (optional, uncomment when ready to implement)
+# axum = { version = "0.7", optional = true }
+# tower = { version = "0.4", optional = true }
+# tower-http = { version = "0.5", features = ["cors", "trace"], optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = []
+# Uncomment when implementing database
+# db = ["sqlx"]
+# Uncomment when implementing REST API
+# api = ["axum", "tower", "tower-http"]
+# Full feature set
+# full = ["db", "api"]
