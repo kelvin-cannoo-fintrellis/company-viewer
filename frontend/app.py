@@ -2,7 +2,7 @@ import sys
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTableWidget,
-    QTableWidgetItem, QLabel, QComboBox, QMessageBox
+    QTableWidgetItem, QLabel, QComboBox, QMessageBox, QGroupBox
 )
 from db import get_conn
 
@@ -10,8 +10,8 @@ from db import get_conn
 class App(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Company & Office Bearer Search")
-        self.resize(900, 500)
+        self.setWindowTitle("Company & Director Search")
+        self.resize(1000, 560)
 
         layout = QVBoxLayout(self)
 
@@ -19,128 +19,145 @@ class App(QWidget):
         self.status = QLabel("Ready")
         layout.addWidget(self.status)
 
-        # Search controls row
-        controls = QHBoxLayout()
+        # ========== COMPANY SEARCH ==========
+        company_group = QGroupBox("Company Search")
+        company_layout = QHBoxLayout()
 
-        self.search_type = QComboBox()
-        self.search_type.addItems([
-            "Company Name (Fuzzy)",
-            "Office Bearer Name",
-            "Office Bearer Country"
+        self.company_search = QLineEdit()
+        self.company_search.setPlaceholderText("Search company name...")
+        self.company_search.returnPressed.connect(self.search_companies)
+        company_layout.addWidget(self.company_search)
+
+        self.company_btn = QPushButton("Search Companies")
+        self.company_btn.clicked.connect(self.search_companies)
+        company_layout.addWidget(self.company_btn)
+
+        company_group.setLayout(company_layout)
+        layout.addWidget(company_group)
+
+        # ========== DIRECTOR SEARCH ==========
+        director_group = QGroupBox("Director Search")
+        director_layout = QHBoxLayout()
+
+        self.director_type = QComboBox()
+        self.director_type.addItems([
+            "By Name",
+            "By Country",
+            "By Address"
         ])
-        controls.addWidget(self.search_type)
+        director_layout.addWidget(self.director_type)
 
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Type search text...")
-        self.search.returnPressed.connect(self.run_search)  # ENTER key triggers search
-        self.search.setFocus() # auto-focus search bar on startup
-        self.search.textChanged.connect(self.run_search) # live search while typing
+        self.director_search = QLineEdit()
+        self.director_search.setPlaceholderText("Search directors...")
+        self.director_search.returnPressed.connect(self.search_directors)
+        director_layout.addWidget(self.director_search)
 
-        controls.addWidget(self.search)
+        self.director_btn = QPushButton("Search Directors")
+        self.director_btn.clicked.connect(self.search_directors)
+        director_layout.addWidget(self.director_btn)
 
-        self.btn = QPushButton("Search")
-        self.btn.clicked.connect(self.run_search)
-        controls.addWidget(self.btn)
+        director_group.setLayout(director_layout)
+        layout.addWidget(director_group)
 
-        layout.addLayout(controls)
-
-        # Results table
-        self.table = QTableWidget(0, 4)
+        # ========== RESULTS TABLE ==========
+        self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels([
             "Company",
-            "Office Bearer",
+            "Director Name",
             "Country",
-            "Position"
+            "Position",
+            "Address"
         ])
         layout.addWidget(self.table)
 
-        # Verify database exists on startup
+        # DB check
         self.db_ok = self.check_db()
 
     def check_db(self):
-        """Ensure database exists and is readable."""
         try:
             conn = get_conn()
             conn.execute("SELECT 1")
             conn.close()
-            self.status.setText("Database loaded successfully")
+            self.status.setText("Database loaded")
             return True
-
         except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Database Error",
-                "Database could not be loaded.\n\n"
-                "Please ensure the database file exists.\n\n"
-                f"Details:\n{e}"
-            )
-
+            QMessageBox.critical(self, "Database Error", str(e))
+            self.company_btn.setEnabled(False)
+            self.director_btn.setEnabled(False)
             self.status.setText("Database missing or invalid")
-            self.btn.setEnabled(False)
             return False
 
-    def run_search(self):
+    # ================= COMPANY SEARCH =================
+    def search_companies(self):
         if not self.db_ok:
-            QMessageBox.warning(self, "Database Error", "Database is not available")
             return
 
-        query = self.search.text().strip()
+        query = self.company_search.text().strip()
 
         if not query:
-            # QMessageBox.warning(self, "Input Needed", "Please enter search text")
+            QMessageBox.warning(self, "Input Needed", "Enter a company name")
             return
 
-        try:
-            conn = get_conn()
-            cur = conn.cursor()
-        except Exception as e:
-            QMessageBox.critical(self, "Database Error", f"Could not open DB:\n{e}")
+        conn = get_conn()
+        cur = conn.cursor()
+
+        cur.execute("""
+        SELECT c.org_name, NULL, NULL, NULL, NULL
+        FROM company c
+        WHERE c.org_name LIKE ?
+           OR c.former_name LIKE ?
+        ORDER BY c.org_name
+        LIMIT 300
+        """, (f"%{query}%", f"%{query}%"))
+
+        rows = cur.fetchall()
+        conn.close()
+
+        self.populate_table(rows)
+
+    # ================= DIRECTOR SEARCH =================
+    def search_directors(self):
+        if not self.db_ok:
             return
 
-        mode = self.search_type.currentText()
+        query = self.director_search.text().strip()
 
-        try:
-            # 1️⃣ Company Name (FUZZY)
-            if mode.startswith("Company Name"):
-                cur.execute("""
-                SELECT c.org_name, NULL, NULL, NULL
-                FROM company c
-                WHERE c.org_name LIKE ?
-                   OR c.former_name LIKE ?
-                ORDER BY c.org_name
-                LIMIT 300
-                """, (f"%{query}%", f"%{query}%"))
-
-            # 2️⃣ Office Bearer Name (FUZZY)
-            elif mode == "Office Bearer Name":
-                cur.execute("""
-                SELECT c.org_name, ob.name, ob.country, ob.position
-                FROM office_bearer ob
-                JOIN company c ON c.id = ob.company_id
-                WHERE ob.name LIKE ?
-                ORDER BY ob.name
-                LIMIT 300
-                """, (f"%{query}%",))
-
-            # 3️⃣ Office Bearer Country
-            else:
-                cur.execute("""
-                SELECT c.org_name, ob.name, ob.country, ob.position
-                FROM office_bearer ob
-                JOIN company c ON c.id = ob.company_id
-                WHERE ob.country LIKE ?
-                ORDER BY c.org_name
-                LIMIT 300
-                """, (f"%{query}%",))
-
-            rows = cur.fetchall()
-            conn.close()
-
-        except Exception as e:
-            QMessageBox.critical(self, "Search Error", f"Search failed:\n{e}")
+        if not query:
+            QMessageBox.warning(self, "Input Needed", "Enter director search text")
             return
 
-        # Clear & fill table
+        mode = self.director_type.currentText()
+
+        conn = get_conn()
+        cur = conn.cursor()
+
+        base_sql = """
+        SELECT c.org_name, ob.name, ob.country, ob.position, ob.address
+        FROM office_bearer ob
+        JOIN company c ON c.id = ob.company_id
+        WHERE UPPER(ob.position) = 'DIRECTOR'
+        """
+
+        if mode == "By Name":
+            sql = base_sql + " AND ob.name LIKE ? ORDER BY ob.name LIMIT 300"
+            params = (f"%{query}%",)
+
+        elif mode == "By Country":
+            sql = base_sql + " AND ob.country LIKE ? ORDER BY ob.name LIMIT 300"
+            params = (f"%{query}%",)
+
+        else:  # Address
+            sql = base_sql + " AND ob.address LIKE ? ORDER BY ob.name LIMIT 300"
+            params = (f"%{query}%",)
+
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        conn.close()
+
+        self.populate_table(rows)
+
+    # ================= TABLE POPULATOR =================
+    def populate_table(self, rows):
         self.table.setRowCount(0)
 
         if not rows:
@@ -151,7 +168,7 @@ class App(QWidget):
         self.table.setRowCount(len(rows))
 
         for r, row in enumerate(rows):
-            for c in range(4):
+            for c in range(5):
                 self.table.setItem(r, c, QTableWidgetItem(str(row[c] or "")))
 
 
