@@ -2,7 +2,8 @@ name: Build Windows EXE
 
 on:
   push:
-    branches: [ "main" ]
+    tags:
+      - "v*"
   workflow_dispatch:
 
 jobs:
@@ -10,13 +11,22 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Install Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+
+      - name: Resolve version from Git tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          echo "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Install uv
         working-directory: ./frontend
@@ -32,11 +42,12 @@ jobs:
       - name: Build EXE with PyInstaller
         working-directory: ./frontend
         run: |
-          uv run pyinstaller --onefile --windowed --name CompanySearch app.py
+          uv run pyinstaller --onefile --windowed `
+            --name CompanySearch-${{ steps.version.outputs.version }} `
+            app.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CompanySearch-Windows
-          path: frontend/dist/CompanySearch.exe
-
+          name: CompanySearch-Windows-${{ steps.version.outputs.version }}
+          path: frontend/dist/CompanySearch-${{ steps.version.outputs.version }}.exe
