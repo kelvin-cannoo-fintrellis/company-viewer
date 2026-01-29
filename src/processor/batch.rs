@@ -71,7 +71,7 @@ pub async fn process_pdfs_in_directory(
     std::fs::create_dir_all(output_dir)?;
     std::fs::create_dir_all(markdown_dir)?;
 
-    let sections_to_parse = [0, 1, 4, 5];
+    let sections_to_parse = [0, 1, 4];
 
     for entry in std::fs::read_dir(input_dir)? {
         let path = entry?.path();
