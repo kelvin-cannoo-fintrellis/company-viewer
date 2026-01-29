@@ -11,7 +11,7 @@ class App(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Company & Director Search")
-        self.resize(1000, 560)
+        self.resize(1100, 600)
 
         layout = QVBoxLayout(self)
 
@@ -60,14 +60,7 @@ class App(QWidget):
         layout.addWidget(director_group)
 
         # ========== RESULTS TABLE ==========
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels([
-            "Company",
-            "Director Name",
-            "Country",
-            "Position",
-            "Address"
-        ])
+        self.table = QTableWidget()
         layout.addWidget(self.table)
 
         # DB check
@@ -93,7 +86,6 @@ class App(QWidget):
             return
 
         query = self.company_search.text().strip()
-
         if not query:
             QMessageBox.warning(self, "Input Needed", "Enter a company name")
             return
@@ -102,18 +94,37 @@ class App(QWidget):
         cur = conn.cursor()
 
         cur.execute("""
-        SELECT c.org_name, NULL, NULL, NULL, NULL
-        FROM company c
-        WHERE c.org_name LIKE ?
-           OR c.former_name LIKE ?
-        ORDER BY c.org_name
+        SELECT 
+            org_name,
+            org_no,
+            orgLastStaCd,
+            orgIncorpDate,
+            orgTypeCd,
+            categoryDesc,
+            companyAddress,
+            formerOrgName
+        FROM company
+        WHERE org_name LIKE ?
+           OR formerOrgName LIKE ?
+        ORDER BY org_name
         LIMIT 300
         """, (f"%{query}%", f"%{query}%"))
 
         rows = cur.fetchall()
         conn.close()
 
-        self.populate_table(rows)
+        headers = [
+            "Company Name",
+            "Registration No",
+            "Status",
+            "Incorporation Date",
+            "Company Type",
+            "Category",
+            "Address",
+            "Former Name"
+        ]
+
+        self.populate_table(rows, headers)
 
     # ================= DIRECTOR SEARCH =================
     def search_directors(self):
@@ -121,7 +132,6 @@ class App(QWidget):
             return
 
         query = self.director_search.text().strip()
-
         if not query:
             QMessageBox.warning(self, "Input Needed", "Enter director search text")
             return
@@ -154,11 +164,21 @@ class App(QWidget):
         rows = cur.fetchall()
         conn.close()
 
-        self.populate_table(rows)
+        headers = [
+            "Company",
+            "Director Name",
+            "Country",
+            "Position",
+            "Address"
+        ]
+
+        self.populate_table(rows, headers)
 
     # ================= TABLE POPULATOR =================
-    def populate_table(self, rows):
+    def populate_table(self, rows, headers):
         self.table.setRowCount(0)
+        self.table.setColumnCount(len(headers))
+        self.table.setHorizontalHeaderLabels(headers)
 
         if not rows:
             self.status.setText("No results found")
@@ -168,7 +188,7 @@ class App(QWidget):
         self.table.setRowCount(len(rows))
 
         for r, row in enumerate(rows):
-            for c in range(5):
+            for c in range(len(headers)):
                 self.table.setItem(r, c, QTableWidgetItem(str(row[c] or "")))
 
 
