@@ -1,0 +1,10 @@
+[project]
+name = "frontend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyinstaller>=6.18.0",
+    "pyside6>=6.10.1",
+]
