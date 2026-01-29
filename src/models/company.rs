@@ -113,6 +113,7 @@ pub struct OfficeBearer {
     pub position: String,
     pub name: String,
     pub address: String,
+    pub country: String,
     pub appointed_date: String,
     pub entity_type: String,
 }

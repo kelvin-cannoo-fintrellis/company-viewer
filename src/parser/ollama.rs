@@ -3,7 +3,10 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::error::Error;
 
-use crate::company::{AnnualReturnList, BusinessDetailsList, CertificateList, CompanyDetails, OfficeBearerList, RegistrationFee, ShareHolderList, StatedCapitalList};
+use crate::company::{
+    AnnualReturnList, BusinessDetailsList, CertificateList, CompanyDetails, OfficeBearerList,
+    RegistrationFee, ShareHolderList, StatedCapitalList,
+};
 use crate::financial::{BalanceSheet, ProfitAndLoss};
 use crate::models::api::{JsonSchema, Message, OllamaChatRequest, OllamaChatResponse};
 
@@ -52,6 +55,23 @@ Table rules:
 Section:
 {}"#,
             section_content
+        )
+    } else if section_name == "Office Bearers" {
+        format!(
+            r#"You are a data extraction engine.
+
+IMPORTANT RULES:
+- If a value is missing, unknown, or unclear, return an EMPTY STRING "".
+- The country is usually the last word in the address.
+- DO NOT use placeholder text ("Not provided", "Unknown", etc).
+- DO NOT include explanations as values.
+- Return ONLY valid JSON.
+
+Extract information from the following "{}" section.
+
+Section:
+{}"#,
+            section_name, section_content
         )
     } else {
         format!(
