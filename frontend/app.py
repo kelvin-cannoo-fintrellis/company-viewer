@@ -97,15 +97,15 @@ class App(QWidget):
         SELECT 
             org_name,
             org_no,
-            orgLastStaCd,
-            orgIncorpDate,
-            orgTypeCd,
-            categoryDesc,
-            companyAddress,
-            formerOrgName
+            org_last_status_code,
+            org_incorp_date,
+            org_type_code,
+            category_desc,
+            company_address,
+            former_org_name
         FROM company
         WHERE org_name LIKE ?
-           OR formerOrgName LIKE ?
+        OR former_org_name LIKE ?
         ORDER BY org_name
         LIMIT 300
         """, (f"%{query}%", f"%{query}%"))
