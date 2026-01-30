@@ -11,6 +11,7 @@ use crate::financial::{BalanceSheet, ProfitAndLoss};
 use crate::models::api::{JsonSchema, Message, OllamaChatRequest, OllamaChatResponse};
 
 /// Shared base prompt for all sections
+#[rustfmt::skip]
 const COMMON_PROMPT: &str = r#"
 You are a data extraction engine.
 
@@ -116,6 +117,7 @@ impl SectionParser {
     /// Section-specific prompt rules
     pub fn prompt_rules(&self) -> &'static str {
         match self {
+            #[rustfmt::skip]
             SectionParser::BusinessDetails => {
                 r#"
 The following section represents a TABLE with these columns:
@@ -130,8 +132,8 @@ Table rules:
 - Ignore headers, repeated titles, page numbers, footers.
 - Do not invent or infer data.
 "#
-            }
-
+            },
+            #[rustfmt::skip]
             SectionParser::OfficeBearers => {
                 r#"
 The following section represents a TABLE with these columns:
@@ -158,7 +160,7 @@ CRITICAL EXTRACTION RULES (MUST FOLLOW):
 
 Return ONLY valid JSON.
 "#
-            }
+            },
 
             _ => "",
         }
