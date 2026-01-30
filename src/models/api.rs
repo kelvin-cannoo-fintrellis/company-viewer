@@ -2,6 +2,12 @@ use schemars::JsonSchema as SchemarsJsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Debug, Clone)]
+pub enum LlmBackend {
+    Ollama,
+    OpenAI,
+}
+
 // Ollama Chat API models
 #[derive(Serialize)]
 pub struct OllamaChatRequest<'a> {
@@ -27,7 +33,43 @@ pub struct MessageResponse {
     pub content: String,
 }
 
-// Trait for types that can provide their JSON schema
+#[derive(Serialize)]
+pub struct OpenAIRequest {
+    pub model: String,
+    pub input: Vec<OpenAIInput>,
+    pub response_format: OpenAIResponseFormat,
+}
+
+#[derive(Serialize)]
+pub struct OpenAIInput {
+    pub role: String,
+    pub content: Vec<OpenAIContent>,
+}
+
+#[derive(Serialize)]
+pub struct OpenAIContent {
+    pub r#type: String,
+    pub text: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct OpenAIResponseFormat {
+    pub r#type: String, // "json_schema"
+    pub json_schema: OpenAIJsonSchema,
+}
+
+#[derive(serde::Serialize)]
+pub struct OpenAIJsonSchema {
+    pub name: String,
+    pub schema: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+pub struct OpenAIResponse {
+    pub output_parsed: Value,
+}
+
+// Trait for schema support
 pub trait JsonSchema {
     fn schema() -> Value;
 }

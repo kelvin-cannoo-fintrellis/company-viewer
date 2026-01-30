@@ -3,10 +3,15 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::error::Error;
 
+use crate::api::{
+    LlmBackend, OpenAIContent, OpenAIInput, OpenAIJsonSchema, OpenAIRequest, OpenAIResponse,
+    OpenAIResponseFormat,
+};
 use crate::company::{
     AnnualReturnList, BusinessDetailsList, CertificateList, CompanyDetails, OfficeBearerList,
     RegistrationFee, ShareHolderList, StatedCapitalList,
 };
+use crate::config::llm::LLM_CONFIG;
 use crate::financial::{BalanceSheet, ProfitAndLoss};
 use crate::models::api::{JsonSchema, Message, OllamaChatRequest, OllamaChatResponse};
 
@@ -45,35 +50,75 @@ Section:
 pub async fn parse_section_with_structured_output<T>(
     client: &Client,
     prompt: String,
-) -> Result<T, Box<dyn Error>>
+) -> Result<T, Box<dyn std::error::Error>>
 where
     T: DeserializeOwned + JsonSchema,
 {
     let schema = T::schema();
 
-    let request = OllamaChatRequest {
-        model: "qwen2.5:3b",
-        messages: vec![Message {
-            role: "user",
-            content: &prompt,
-        }],
-        stream: false,
-        format: schema,
-    };
+    match LLM_CONFIG.backend {
+        LlmBackend::Ollama => {
+            let request = OllamaChatRequest {
+                model: &LLM_CONFIG.ollama_model,
+                messages: vec![Message {
+                    role: "user",
+                    content: &prompt,
+                }],
+                stream: false,
+                format: schema,
+            };
 
-    let res = client
-        .post("http://localhost:11434/api/chat")
-        .json(&request)
-        .send()
-        .await?
-        .error_for_status()?;
+            let res = client
+                .post(format!("{}/api/chat", LLM_CONFIG.ollama_url))
+                .json(&request)
+                .send()
+                .await?
+                .error_for_status()?;
 
-    let chat_response: OllamaChatResponse = res.json().await?;
+            let chat_response: OllamaChatResponse = res.json().await?;
+            Ok(serde_json::from_str(&chat_response.message.content)?)
+        }
 
-    // Parse the content into the target type
-    let parsed: T = serde_json::from_str(&chat_response.message.content)?;
+        LlmBackend::OpenAI { .. } => {
+            let api_key = LLM_CONFIG
+                .openai_api_key
+                .as_ref()
+                .ok_or("OPENAI_API_KEY missing")?;
 
-    Ok(parsed)
+            let request = OpenAIRequest {
+                model: LLM_CONFIG.openai_model.clone(),
+                input: vec![OpenAIInput {
+                    role: "user".to_string(),
+                    content: vec![OpenAIContent {
+                        r#type: "input_text".to_string(),
+                        text: prompt,
+                    }],
+                }],
+                response_format: OpenAIResponseFormat {
+                    r#type: "json_schema".to_string(),
+                    json_schema: OpenAIJsonSchema {
+                        name: std::any::type_name::<T>()
+                            .rsplit("::")
+                            .next()
+                            .unwrap()
+                            .to_string(),
+                        schema,
+                    },
+                },
+            };
+
+            let res = client
+                .post("https://api.openai.com/v1/responses")
+                .bearer_auth(api_key)
+                .json(&request)
+                .send()
+                .await?
+                .error_for_status()?;
+
+            let response: OpenAIResponse = res.json().await?;
+            Ok(serde_json::from_value(response.output_parsed)?)
+        }
+    }
 }
 
 /// Section parser enum to dispatch parsing based on section type
