@@ -1,3 +1,15 @@
+At root level, create a .env:
+
+```
+LLM_BACKEND=ollama
+# or: openai
+
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
+OLLAMA_MODEL=qwen2.5:3b
+OLLAMA_URL=http://localhost:11434
+```
+
 To run script for parsing the PDFs:
 
 ```bash
