@@ -2,6 +2,7 @@ use reqwest::Client;
 use serde_json::Value;
 use std::error::Error;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use crate::parser::ollama::SectionParser;
 use crate::parser::pdf::get_text_from_pdf;
@@ -52,6 +53,18 @@ fn build_markdown_for_pdf(pdf_name: &str, pdf_text: &str, sections_to_parse: &[u
     md
 }
 
+fn format_duration(d: Duration) -> String {
+    let secs = d.as_secs();
+    let mins = secs / 60;
+    let secs = secs % 60;
+    format!("{mins}m {secs}s")
+}
+
+fn already_processed(output_dir: &str, pdf_filename: &str) -> bool {
+    let path = format!("{}/{}.json", output_dir, pdf_filename);
+    std::path::Path::new(&path).exists()
+}
+
 /// Process all PDFs in a directory and save parsed sections to JSON files
 ///
 /// # Arguments
@@ -65,48 +78,52 @@ pub async fn process_pdfs_in_directory(
     input_dir: &str,
     output_dir: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let debugging = true;
+    let debugging = false;
     let debug_markdown_dir = "output_markdown";
     let client = Client::new();
 
     std::fs::create_dir_all(output_dir)?;
-
     if debugging {
         std::fs::create_dir_all(debug_markdown_dir)?;
     }
 
     let sections_to_parse = [0, 1, 4];
 
-    for entry in std::fs::read_dir(input_dir)? {
-        let path = entry?.path();
+    let entries: Vec<_> = std::fs::read_dir(input_dir)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().map_or(false, |e| e == "pdf"))
+        .collect();
 
-        if path.extension().map_or(true, |e| e != "pdf") {
-            continue;
-        }
+    let total = entries.len();
+    let start = Instant::now();
+    let mut completed = 0usize;
 
+    for path in entries {
         let pdf_path = path.to_str().unwrap();
         let pdf_filename = path.file_stem().unwrap().to_str().unwrap();
 
-        println!("Processing: {}", pdf_filename);
+        if already_processed(output_dir, pdf_filename) {
+            tracing::info!("Skipping {} (checkpoint hit)", pdf_filename);
+            completed += 1;
+            continue;
+        }
+
+        tracing::info!("Processing {}", pdf_filename);
 
         let pdf_text = get_text_from_pdf(pdf_path);
 
-        // ---------------- JSON ----------------
         let mut pdf_data = serde_json::Map::new();
-        pdf_data.insert(
-            "filename".to_string(),
-            Value::String(pdf_filename.to_string()),
-        );
+        pdf_data.insert("filename".into(), Value::String(pdf_filename.into()));
 
         for &section_index in &sections_to_parse {
             let section_text = extract_section(section_index, &pdf_text);
-            let section_name = SectionParser::section_name(section_index);
-
             if section_text.trim().is_empty() {
                 continue;
             }
 
-            println!("  - Parsing {}", section_name);
+            let section_name = SectionParser::section_name(section_index);
+            tracing::info!("  Parsing {}", section_name);
 
             if let Some(parser) = SectionParser::from_section_index(section_index) {
                 match parser.parse(&client, &section_text, section_name).await {
@@ -116,7 +133,7 @@ pub async fn process_pdfs_in_directory(
                         }
                     }
                     Err(e) => {
-                        println!("  ✗ {} parse error: {}", section_name, e);
+                        tracing::warn!("  {} parse error: {}", section_name, e);
                     }
                 }
             }
@@ -125,12 +142,25 @@ pub async fn process_pdfs_in_directory(
         let json_path = format!("{}/{}.json", output_dir, pdf_filename);
         std::fs::write(&json_path, serde_json::to_string_pretty(&pdf_data)?)?;
 
-        // ---------------- MARKDOWN ----------------
         if debugging {
             let markdown = build_markdown_for_pdf(pdf_filename, &pdf_text, &sections_to_parse);
             let md_path = format!("{}/{}.md", debug_markdown_dir, pdf_filename);
             std::fs::write(&md_path, markdown)?;
         }
+
+        completed += 1;
+        let elapsed = start.elapsed();
+        let avg = elapsed / completed as u32;
+        let eta = avg * (total - completed) as u32;
+
+        tracing::info!(
+            "[{}/{}] Finished {} | elapsed={} | ETA={}",
+            completed,
+            total,
+            pdf_filename,
+            format_duration(elapsed),
+            format_duration(eta)
+        );
     }
 
     Ok(())
@@ -180,7 +210,7 @@ pub async fn process_single_pdf(
                     }
                 }
                 Err(e) => {
-                    eprintln!("Warning: {} parse error: {}", section_name, e);
+                    tracing::warn!("Warning: {} parse error: {}", section_name, e);
                 }
             }
         }

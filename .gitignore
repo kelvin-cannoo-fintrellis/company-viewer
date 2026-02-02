@@ -7,3 +7,5 @@
 /output_markdown
 
 .env
+
+processing.log
