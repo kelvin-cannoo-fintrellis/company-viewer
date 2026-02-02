@@ -64,12 +64,16 @@ fn build_markdown_for_pdf(pdf_name: &str, pdf_text: &str, sections_to_parse: &[u
 pub async fn process_pdfs_in_directory(
     input_dir: &str,
     output_dir: &str,
-    markdown_dir: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let debugging = true;
+    let debug_markdown_dir = "output_markdown";
     let client = Client::new();
 
     std::fs::create_dir_all(output_dir)?;
-    std::fs::create_dir_all(markdown_dir)?;
+
+    if debugging {
+        std::fs::create_dir_all(debug_markdown_dir)?;
+    }
 
     let sections_to_parse = [0, 1, 4];
 
@@ -122,12 +126,11 @@ pub async fn process_pdfs_in_directory(
         std::fs::write(&json_path, serde_json::to_string_pretty(&pdf_data)?)?;
 
         // ---------------- MARKDOWN ----------------
-        let markdown = build_markdown_for_pdf(pdf_filename, &pdf_text, &sections_to_parse);
-        let md_path = format!("{}/{}.md", markdown_dir, pdf_filename);
-        std::fs::write(&md_path, markdown)?;
-
-        println!("  ✓ JSON saved to {}", json_path);
-        println!("  ✓ Markdown saved to {}\n", md_path);
+        if debugging {
+            let markdown = build_markdown_for_pdf(pdf_filename, &pdf_text, &sections_to_parse);
+            let md_path = format!("{}/{}.md", debug_markdown_dir, pdf_filename);
+            std::fs::write(&md_path, markdown)?;
+        }
     }
 
     Ok(())
