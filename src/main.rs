@@ -19,6 +19,8 @@ pub fn init_logging(log_path: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    dotenvy::dotenv().ok();
+
     init_logging("processing.log")?;
 
     // Usage example: process all PDFs in the 'pdf' directory

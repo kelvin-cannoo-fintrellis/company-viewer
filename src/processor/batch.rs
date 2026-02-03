@@ -8,6 +8,27 @@ use crate::parser::ollama::SectionParser;
 use crate::parser::pdf::get_text_from_pdf;
 use crate::parser::section::extract_section;
 
+/// Simple lightweight timer
+struct Timer<'a> {
+    name: &'a str,
+    start: Instant,
+}
+
+impl<'a> Timer<'a> {
+    fn new(name: &'a str) -> Self {
+        Self {
+            name,
+            start: Instant::now(),
+        }
+    }
+
+    fn stop(self) -> Duration {
+        let elapsed = self.start.elapsed();
+        tracing::info!("⏱ {} took {:?}", self.name, elapsed);
+        elapsed
+    }
+}
+
 /// Helper function to convert parsed JSON to the appropriate output key and value
 fn output_key_and_value(section_index: usize, json: Value) -> Option<(String, Value)> {
     let key = match section_index {
@@ -78,7 +99,7 @@ pub async fn process_pdfs_in_directory(
     input_dir: &str,
     output_dir: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let debugging = false;
+    let debugging = std::env::var("DEBUGGING").ok().as_deref() == Some("true");
     let debug_markdown_dir = "output_markdown";
     let client = Client::new();
 
@@ -99,7 +120,20 @@ pub async fn process_pdfs_in_directory(
     let start = Instant::now();
     let mut completed = 0usize;
 
+    // Aggregate timers (only used if debugging)
+    let mut time_pdf_extract = Duration::ZERO;
+    let mut time_section_extract = Duration::ZERO;
+    let mut time_llm_parse = Duration::ZERO;
+    let mut time_json_write = Duration::ZERO;
+    let mut time_markdown_write = Duration::ZERO;
+
     for path in entries {
+        let file_timer = if debugging {
+            Some(Timer::new("TOTAL FILE"))
+        } else {
+            None
+        };
+
         let pdf_path = path.to_str().unwrap();
         let pdf_filename = path.file_stem().unwrap().to_str().unwrap();
 
@@ -111,44 +145,82 @@ pub async fn process_pdfs_in_directory(
 
         tracing::info!("Processing {}", pdf_filename);
 
-        let pdf_text = get_text_from_pdf(pdf_path);
+        // PDF extraction timing
+        let pdf_text = if debugging {
+            let t = Timer::new("PDF text extraction");
+            let text = get_text_from_pdf(pdf_path);
+            time_pdf_extract += t.stop();
+            text
+        } else {
+            get_text_from_pdf(pdf_path)
+        };
 
         let mut pdf_data = serde_json::Map::new();
         pdf_data.insert("filename".into(), Value::String(pdf_filename.into()));
 
         for &section_index in &sections_to_parse {
-            let section_text = extract_section(section_index, &pdf_text);
+            let section_name = SectionParser::section_name(section_index);
+
+            // Section extraction timing
+            let section_text = if debugging {
+                let t = Timer::new("Section extraction");
+                let text = extract_section(section_index, &pdf_text);
+                time_section_extract += t.stop();
+                text
+            } else {
+                extract_section(section_index, &pdf_text)
+            };
+
             if section_text.trim().is_empty() {
                 continue;
             }
 
-            let section_name = SectionParser::section_name(section_index);
             tracing::info!("  Parsing {}", section_name);
 
             if let Some(parser) = SectionParser::from_section_index(section_index) {
                 match parser.parse(&client, &section_text, section_name).await {
                     Ok(json) => {
+                        if debugging {
+                            let t = Timer::new("LLM parse");
+                            time_llm_parse += t.stop();
+                        }
                         if let Some((key, value)) = output_key_and_value(section_index, json) {
                             pdf_data.insert(key, value);
                         }
                     }
                     Err(e) => {
+                        if debugging {
+                            let t = Timer::new("LLM parse");
+                            time_llm_parse += t.stop();
+                        }
                         tracing::warn!("  {} parse error: {}", section_name, e);
                     }
                 }
             }
         }
 
-        let json_path = format!("{}/{}.json", output_dir, pdf_filename);
-        std::fs::write(&json_path, serde_json::to_string_pretty(&pdf_data)?)?;
-
+        // JSON write timing
         if debugging {
+            let t = Timer::new("JSON write");
+            let json_path = format!("{}/{}.json", output_dir, pdf_filename);
+            std::fs::write(&json_path, serde_json::to_string_pretty(&pdf_data)?)?;
+            time_json_write += t.stop();
+        } else {
+            let json_path = format!("{}/{}.json", output_dir, pdf_filename);
+            std::fs::write(&json_path, serde_json::to_string_pretty(&pdf_data)?)?;
+        }
+
+        // Markdown write timing
+        if debugging {
+            let t = Timer::new("Markdown write");
             let markdown = build_markdown_for_pdf(pdf_filename, &pdf_text, &sections_to_parse);
             let md_path = format!("{}/{}.md", debug_markdown_dir, pdf_filename);
             std::fs::write(&md_path, markdown)?;
+            time_markdown_write += t.stop();
         }
 
         completed += 1;
+
         let elapsed = start.elapsed();
         let avg = elapsed / completed as u32;
         let eta = avg * (total - completed) as u32;
@@ -161,6 +233,21 @@ pub async fn process_pdfs_in_directory(
             format_duration(elapsed),
             format_duration(eta)
         );
+
+        if let Some(timer) = file_timer {
+            timer.stop();
+        }
+    }
+
+    // Summary report (only if debugging)
+    if debugging {
+        tracing::info!("========== PERFORMANCE SUMMARY ==========");
+        tracing::info!("PDF extraction total: {:?}", time_pdf_extract);
+        tracing::info!("Section extraction total: {:?}", time_section_extract);
+        tracing::info!("LLM parse total: {:?}", time_llm_parse);
+        tracing::info!("JSON write total: {:?}", time_json_write);
+        tracing::info!("Markdown write total: {:?}", time_markdown_write);
+        tracing::info!("==========================================");
     }
 
     Ok(())
