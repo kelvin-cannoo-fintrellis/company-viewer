@@ -25,7 +25,7 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart("v")
+          $version = "${{ github.ref_name }}"
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Install uv
