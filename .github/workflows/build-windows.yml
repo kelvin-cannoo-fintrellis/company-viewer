@@ -25,7 +25,7 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}"
+          $version = "${{ github.ref_name }}".TrimStart("v")
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Install uv
@@ -33,6 +33,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install uv
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            frontend/.venv
+          key: uv-${{ runner.os }}-${{ hashFiles('frontend/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-
 
       - name: Sync dependencies
         working-directory: ./frontend
@@ -42,12 +51,22 @@ jobs:
       - name: Build EXE with PyInstaller
         working-directory: ./frontend
         run: |
-          uv run pyinstaller --onedir --windowed `
-            --name CompanySearch-${{ steps.version.outputs.version }} `
+          uv run pyinstaller `
+            --onedir `
+            --windowed `
+            --lazy-imports `
+            --optimize=2 `
+            --noupx `
+            --strip `
+            --clean `
+            --name CompanySearch `
             app.py
 
-      - name: Upload EXE artifact
+      - name: Show dist output (debug)
+        run: dir frontend/dist
+
+      - name: Upload EXE artifact (folder)
         uses: actions/upload-artifact@v4
         with:
           name: CompanySearch-Windows-${{ steps.version.outputs.version }}
-          path: frontend/dist/CompanySearch-${{ steps.version.outputs.version }}.exe
+          path: frontend/dist/CompanySearch
