@@ -42,7 +42,7 @@ jobs:
       - name: Build EXE with PyInstaller
         working-directory: ./frontend
         run: |
-          uv run pyinstaller --onefile --windowed `
+          uv run pyinstaller --onedir --windowed `
             --name CompanySearch-${{ steps.version.outputs.version }} `
             app.py
 
