@@ -28,6 +28,16 @@ class App(QWidget):
         self.company_search.returnPressed.connect(self.search_companies)
         company_layout.addWidget(self.company_search)
 
+        # Category filter dropdown
+        self.category_filter = QComboBox()
+        self.category_filter.addItems([
+            "All Categories",
+            "DOMESTIC",
+            "GLOBAL",
+            "FOREIGN(DOM BRANCH)"
+        ])
+        company_layout.addWidget(self.category_filter)
+
         self.company_btn = QPushButton("Search Companies")
         self.company_btn.clicked.connect(self.search_companies)
         company_layout.addWidget(self.company_btn)
@@ -69,10 +79,14 @@ class App(QWidget):
     def check_db(self):
         try:
             conn = get_conn()
-            conn.execute("SELECT 1")
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM company")
+            count = cur.fetchone()[0]
             conn.close()
-            self.status.setText("Database loaded")
+
+            self.status.setText(f"Database loaded — {count:,} companies")
             return True
+
         except Exception as e:
             QMessageBox.critical(self, "Database Error", str(e))
             self.company_btn.setEnabled(False)
@@ -90,10 +104,9 @@ class App(QWidget):
             QMessageBox.warning(self, "Input Needed", "Enter a company name")
             return
 
-        conn = get_conn()
-        cur = conn.cursor()
+        category = self.category_filter.currentText()
 
-        cur.execute("""
+        sql = """
         SELECT 
             org_name,
             org_no,
@@ -104,12 +117,19 @@ class App(QWidget):
             company_address,
             former_org_name
         FROM company
-        WHERE org_name LIKE ?
-        OR former_org_name LIKE ?
-        ORDER BY org_name
-        LIMIT 300
-        """, (f"%{query}%", f"%{query}%"))
+        WHERE (org_name LIKE ? OR former_org_name LIKE ?)
+        """
+        params = [f"%{query}%", f"%{query}%"]
 
+        if category != "All Categories":
+            sql += " AND org_category_code = ?"
+            params.append(category)
+
+        sql += " ORDER BY org_name LIMIT 300"
+
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(sql, params)
         rows = cur.fetchall()
         conn.close()
 
