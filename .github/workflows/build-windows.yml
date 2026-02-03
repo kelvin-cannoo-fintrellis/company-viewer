@@ -54,7 +54,6 @@ jobs:
           uv run pyinstaller `
             --onedir `
             --windowed `
-            --lazy-imports `
             --optimize=2 `
             --noupx `
             --strip `
