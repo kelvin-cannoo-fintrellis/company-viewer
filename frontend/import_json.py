@@ -202,17 +202,19 @@ def import_directory(json_dir):
                 winding_up_status
             ))
 
-            # ---- Resolve company_id safely ----
-            cur.execute("""
-                SELECT id FROM company
-                WHERE org_no = ? OR org_file_no = ? OR org_name = ?
-            """, (org_no, org_file_no, org_name))
-
-            row = cur.fetchone()
-            if not row:
-                continue
-
-            company_id = row["id"]
+            # --- Resolve company_id reliably ---
+            if cur.lastrowid:
+                company_id = cur.lastrowid
+            else:
+                cur.execute("""
+                    SELECT id FROM company
+                    WHERE org_no = ? OR org_file_no = ?
+                    LIMIT 1
+                """, (org_no, org_file_no))
+                row = cur.fetchone()
+                if not row:
+                    continue
+                company_id = row["id"]
 
             # ---- Insert Company FTS ----
             cur.execute("""
