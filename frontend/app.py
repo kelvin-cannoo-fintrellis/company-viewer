@@ -70,7 +70,6 @@ class App(QWidget):
 
         # ========== RESULTS TABLE ==========
         self.table = QTableWidget()
-        self.table.cellDoubleClicked.connect(self.show_company_directors)
         layout.addWidget(self.table)
 
         self.db_ok = self.check_db()
@@ -151,7 +150,7 @@ class App(QWidget):
         ]
 
         self.populate_table(rows, headers)
-        self.status.setText(f"{len(rows)} company result(s). Double-click to view directors.")
+        self.status.setText(f"{len(rows)} company result(s).")
 
     # ================= DIRECTOR SEARCH =================
     def search_directors(self):
@@ -187,29 +186,6 @@ class App(QWidget):
 
         headers = ["Company", "Director Name", "Country", "Position", "Address"]
         self.populate_table(rows, headers)
-
-    # ================= SHOW DIRECTORS FOR COMPANY =================
-    def show_company_directors(self, row, col):
-        company_id_item = self.table.item(row, 0)
-        if not company_id_item:
-            return
-
-        company_id = company_id_item.text()
-
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT name, country, position, address, appointed_date
-            FROM office_bearer
-            WHERE company_id = ?
-            ORDER BY name
-        """, (company_id,))
-        rows = cur.fetchall()
-        conn.close()
-
-        headers = ["Name", "Country", "Position", "Address", "Appointed Date"]
-        self.populate_table(rows, headers)
-        self.status.setText(f"{len(rows)} director(s) found")
 
     # ================= TABLE POPULATOR =================
     def populate_table(self, rows, headers):
