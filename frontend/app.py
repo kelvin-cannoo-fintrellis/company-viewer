@@ -2,7 +2,8 @@ import sys
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTableWidget,
-    QTableWidgetItem, QLabel, QComboBox, QMessageBox, QGroupBox
+    QTableWidgetItem, QLabel, QComboBox, QMessageBox,
+    QGroupBox, QCheckBox
 )
 from db import get_conn
 
@@ -24,11 +25,10 @@ class App(QWidget):
         company_layout = QHBoxLayout()
 
         self.company_search = QLineEdit()
-        self.company_search.setPlaceholderText("Search company name...")
+        self.company_search.setPlaceholderText("Search company name (leave empty to list all)")
         self.company_search.returnPressed.connect(self.search_companies)
         company_layout.addWidget(self.company_search)
 
-        # Category filter dropdown
         self.category_filter = QComboBox()
         self.category_filter.addItems([
             "All Categories",
@@ -37,6 +37,9 @@ class App(QWidget):
             "FOREIGN(DOM BRANCH)"
         ])
         company_layout.addWidget(self.category_filter)
+
+        self.hide_defunct = QCheckBox("Hide defunct companies")
+        company_layout.addWidget(self.hide_defunct)
 
         self.company_btn = QPushButton("Search Companies")
         self.company_btn.clicked.connect(self.search_companies)
@@ -50,11 +53,7 @@ class App(QWidget):
         director_layout = QHBoxLayout()
 
         self.director_type = QComboBox()
-        self.director_type.addItems([
-            "By Name",
-            "By Country",
-            "By Address"
-        ])
+        self.director_type.addItems(["By Name", "By Country", "By Address"])
         director_layout.addWidget(self.director_type)
 
         self.director_search = QLineEdit()
@@ -71,11 +70,12 @@ class App(QWidget):
 
         # ========== RESULTS TABLE ==========
         self.table = QTableWidget()
+        self.table.cellDoubleClicked.connect(self.show_company_directors)
         layout.addWidget(self.table)
 
-        # DB check
         self.db_ok = self.check_db()
 
+    # ================= DB CHECK =================
     def check_db(self):
         try:
             conn = get_conn()
@@ -100,14 +100,12 @@ class App(QWidget):
             return
 
         query = self.company_search.text().strip()
-        if not query:
-            QMessageBox.warning(self, "Input Needed", "Enter a company name")
-            return
-
         category = self.category_filter.currentText()
+        hide_defunct = self.hide_defunct.isChecked()
 
         sql = """
         SELECT 
+            id,
             org_name,
             org_no,
             org_last_status_code,
@@ -117,13 +115,20 @@ class App(QWidget):
             company_address,
             former_org_name
         FROM company
-        WHERE (org_name LIKE ? OR former_org_name LIKE ?)
+        WHERE 1=1
         """
-        params = [f"%{query}%", f"%{query}%"]
+        params = []
+
+        if query:
+            sql += " AND (org_name LIKE ? OR former_org_name LIKE ?)"
+            params += [f"%{query}%", f"%{query}%"]
 
         if category != "All Categories":
             sql += " AND org_category_code = ?"
             params.append(category)
+
+        if hide_defunct:
+            sql += " AND org_last_status_code NOT LIKE 'DEFUNCT'"
 
         sql += " ORDER BY org_name LIMIT 300"
 
@@ -134,6 +139,7 @@ class App(QWidget):
         conn.close()
 
         headers = [
+            "ID",
             "Company Name",
             "Registration No",
             "Status",
@@ -145,6 +151,7 @@ class App(QWidget):
         ]
 
         self.populate_table(rows, headers)
+        self.status.setText(f"{len(rows)} company result(s). Double-click to view directors.")
 
     # ================= DIRECTOR SEARCH =================
     def search_directors(self):
@@ -158,9 +165,6 @@ class App(QWidget):
 
         mode = self.director_type.currentText()
 
-        conn = get_conn()
-        cur = conn.cursor()
-
         base_sql = """
         SELECT c.org_name, ob.name, ob.country, ob.position, ob.address
         FROM office_bearer ob
@@ -170,32 +174,46 @@ class App(QWidget):
 
         if mode == "By Name":
             sql = base_sql + " AND ob.name LIKE ? ORDER BY ob.name LIMIT 300"
-            params = (f"%{query}%",)
-
         elif mode == "By Country":
             sql = base_sql + " AND ob.country LIKE ? ORDER BY ob.name LIMIT 300"
-            params = (f"%{query}%",)
-
-        else:  # Address
+        else:
             sql = base_sql + " AND ob.address LIKE ? ORDER BY ob.name LIMIT 300"
-            params = (f"%{query}%",)
 
-        cur.execute(sql, params)
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(sql, (f"%{query}%",))
         rows = cur.fetchall()
         conn.close()
 
-        headers = [
-            "Company",
-            "Director Name",
-            "Country",
-            "Position",
-            "Address"
-        ]
-
+        headers = ["Company", "Director Name", "Country", "Position", "Address"]
         self.populate_table(rows, headers)
+
+    # ================= SHOW DIRECTORS FOR COMPANY =================
+    def show_company_directors(self, row, col):
+        company_id_item = self.table.item(row, 0)
+        if not company_id_item:
+            return
+
+        company_id = company_id_item.text()
+
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT name, country, position, address, appointed_date
+            FROM office_bearer
+            WHERE company_id = ?
+            ORDER BY name
+        """, (company_id,))
+        rows = cur.fetchall()
+        conn.close()
+
+        headers = ["Name", "Country", "Position", "Address", "Appointed Date"]
+        self.populate_table(rows, headers)
+        self.status.setText(f"{len(rows)} director(s) found")
 
     # ================= TABLE POPULATOR =================
     def populate_table(self, rows, headers):
+        self.table.clear()
         self.table.setRowCount(0)
         self.table.setColumnCount(len(headers))
         self.table.setHorizontalHeaderLabels(headers)
