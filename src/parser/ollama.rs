@@ -163,6 +163,38 @@ impl SectionParser {
     pub fn prompt_rules(&self) -> &'static str {
         match self {
             #[rustfmt::skip]
+SectionParser::CompanyDetails => {
+    r#"
+The following section represents KEY-VALUE company metadata, NOT a table.
+
+The layout looks like:
+- File No.
+- Date Incorporated
+- Name
+- Nature
+- Type
+- Status
+- Category
+- Sub Category
+- Registered Office Address
+- Effective date for Registered Office Address
+
+EXTRACTION RULES (MUST FOLLOW STRICTLY):
+
+Category rules:
+- Allowed common values: DOMESTIC, FOREIGN(DOM BRANCH), AUTHORISED COMPANY
+- If Category is EMPTY, return "".
+- If Category contains another meaningful value, KEEP it EXACTLY.
+- DO NOT normalize or guess Category values.
+
+Type rules:
+- Common value: LIMITED BY SHARES
+- If Type is EMPTY, return "".
+- If Type contains another meaningful value, KEEP it EXACTLY.
+- DO NOT normalize or guess Type values.
+"#
+},
+            #[rustfmt::skip]
             SectionParser::BusinessDetails => {
                 r#"
 The following section represents a TABLE with these columns:
