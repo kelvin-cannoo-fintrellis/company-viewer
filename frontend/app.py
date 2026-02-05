@@ -3,8 +3,9 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTableWidget,
     QTableWidgetItem, QLabel, QComboBox, QMessageBox,
-    QGroupBox, QCheckBox
+    QGroupBox
 )
+from PySide6.QtCore import Qt
 from db import get_conn
 
 
@@ -12,7 +13,7 @@ class App(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Company & Director Search")
-        self.resize(1250, 650)
+        self.resize(1250, 720)
 
         layout = QVBoxLayout(self)
 
@@ -84,9 +85,21 @@ class App(QWidget):
         director_group.setLayout(director_layout)
         layout.addWidget(director_group)
 
-        # ========== RESULTS TABLE ==========
-        self.table = QTableWidget()
-        layout.addWidget(self.table)
+        # ========== COMPANY TABLE ==========
+        layout.addWidget(QLabel("Companies"))
+
+        self.company_table = QTableWidget()
+        self.company_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.company_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.company_table.itemSelectionChanged.connect(self.load_directors_for_selected_company)
+        layout.addWidget(self.company_table)
+
+        # ========== DIRECTORS TABLE ==========
+        layout.addWidget(QLabel("Directors"))
+
+        self.director_table = QTableWidget()
+        self.director_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        layout.addWidget(self.director_table)
 
         self.db_ok = self.check_db()
 
@@ -154,17 +167,15 @@ class App(QWidget):
         elif status_filter == "Dissolved":
             sql += " AND UPPER(org_last_status_code) LIKE '%DISSOLVED%'"
 
-        # ================= DATE RANGE FILTER =================
-        # Convert DD/MM/YYYY to YYYYMMDD for correct ordering
-        def normalize_date(expr):
+        def normalize(expr):
             return f"substr({expr}, 7, 4) || substr({expr}, 4, 2) || substr({expr}, 1, 2)"
 
         if date_from:
-            sql += f" AND {normalize_date('org_incorp_date')} >= ?"
+            sql += f" AND {normalize('org_incorp_date')} >= ?"
             params.append(date_from[6:10] + date_from[3:5] + date_from[0:2])
 
         if date_to:
-            sql += f" AND {normalize_date('org_incorp_date')} <= ?"
+            sql += f" AND {normalize('org_incorp_date')} <= ?"
             params.append(date_to[6:10] + date_to[3:5] + date_to[0:2])
 
         sql += " ORDER BY org_name"
@@ -187,7 +198,8 @@ class App(QWidget):
             "Former Name"
         ]
 
-        self.populate_table(rows, headers)
+        self.populate_company_table(rows, headers)
+        self.director_table.clear()
         self.status.setText(f"{len(rows)} company result(s).")
 
     # ================= DIRECTOR SEARCH =================
@@ -232,25 +244,75 @@ class App(QWidget):
         conn.close()
 
         headers = ["Company", "Director Name", "Country", "Position", "Address"]
-        self.populate_table(rows, headers)
 
-    # ================= TABLE POPULATOR =================
-    def populate_table(self, rows, headers):
-        self.table.clear()
-        self.table.setRowCount(0)
-        self.table.setColumnCount(len(headers))
-        self.table.setHorizontalHeaderLabels(headers)
+        self.populate_director_table(rows, headers)
+        self.status.setText(f"{len(rows)} director result(s).")
 
-        if not rows:
-            self.status.setText("No results found")
+    # ================= LOAD DIRECTORS FOR SELECTED COMPANY =================
+    def load_directors_for_selected_company(self):
+        selected = self.company_table.selectedItems()
+        if not selected:
             return
 
-        self.status.setText(f"{len(rows)} result(s) found")
-        self.table.setRowCount(len(rows))
+        row = selected[0].row()
+        company_id = self.company_table.item(row, 0).text()
+        company_name = self.company_table.item(row, 1).text()
+
+        self.load_directors(company_id, company_name)
+
+    def load_directors(self, company_id, company_name):
+        sql = """
+        SELECT name, country, position, address
+        FROM office_bearer
+        WHERE company_id = ?
+          AND UPPER(position) = 'DIRECTOR'
+        ORDER BY name
+        """
+
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(sql, (company_id,))
+        rows = cur.fetchall()
+        conn.close()
+
+        headers = ["Director Name", "Country", "Position", "Address"]
+        self.populate_director_table(rows, headers)
+
+        if rows:
+            self.status.setText(f"{len(rows)} directors found for {company_name}")
+        else:
+            self.status.setText(f"No directors found for {company_name}")
+
+    # ================= TABLE POPULATORS =================
+    def populate_company_table(self, rows, headers):
+        self.company_table.clear()
+        self.company_table.setRowCount(0)
+        self.company_table.setColumnCount(len(headers))
+        self.company_table.setHorizontalHeaderLabels(headers)
+
+        if not rows:
+            return
+
+        self.company_table.setRowCount(len(rows))
 
         for r, row in enumerate(rows):
             for c in range(len(headers)):
-                self.table.setItem(r, c, QTableWidgetItem(str(row[c] or "")))
+                self.company_table.setItem(r, c, QTableWidgetItem(str(row[c] or "")))
+
+    def populate_director_table(self, rows, headers):
+        self.director_table.clear()
+        self.director_table.setRowCount(0)
+        self.director_table.setColumnCount(len(headers))
+        self.director_table.setHorizontalHeaderLabels(headers)
+
+        if not rows:
+            return
+
+        self.director_table.setRowCount(len(rows))
+
+        for r, row in enumerate(rows):
+            for c in range(len(headers)):
+                self.director_table.setItem(r, c, QTableWidgetItem(str(row[c] or "")))
 
 
 if __name__ == "__main__":
