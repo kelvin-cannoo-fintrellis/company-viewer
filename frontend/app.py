@@ -38,9 +38,6 @@ class App(QWidget):
         ])
         company_layout.addWidget(self.category_filter)
 
-        self.hide_defunct = QCheckBox("Hide defunct companies")
-        company_layout.addWidget(self.hide_defunct)
-
         self.company_btn = QPushButton("Search Companies")
         self.company_btn.clicked.connect(self.search_companies)
         company_layout.addWidget(self.company_btn)
@@ -100,7 +97,6 @@ class App(QWidget):
 
         query = self.company_search.text().strip()
         category = self.category_filter.currentText()
-        hide_defunct = self.hide_defunct.isChecked()
 
         sql = """
         SELECT 
@@ -125,9 +121,6 @@ class App(QWidget):
         if category != "All Categories":
             sql += " AND org_category_code = ?"
             params.append(category)
-
-        if hide_defunct:
-            sql += " AND org_last_status_code NOT LIKE 'DEFUNCT'"
 
         sql += " ORDER BY org_name LIMIT 300"
 
