@@ -53,7 +53,7 @@ class App(QWidget):
         director_layout = QHBoxLayout()
 
         self.director_type = QComboBox()
-        self.director_type.addItems(["By Name", "By Country", "By Address"])
+        self.director_type.addItems(["By Name", "By Country"])
         director_layout.addWidget(self.director_type)
 
         self.director_search = QLineEdit()
@@ -175,8 +175,6 @@ class App(QWidget):
             sql = base_sql + " AND ob.name LIKE ? ORDER BY ob.name LIMIT 300"
         elif mode == "By Country":
             sql = base_sql + " AND ob.country LIKE ? ORDER BY ob.name LIMIT 300"
-        else:
-            sql = base_sql + " AND ob.address LIKE ? ORDER BY ob.name LIMIT 300"
 
         conn = get_conn()
         cur = conn.cursor()
