@@ -12,7 +12,7 @@ class App(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Company & Director Search")
-        self.resize(1100, 600)
+        self.resize(1250, 650)
 
         layout = QVBoxLayout(self)
 
@@ -38,6 +38,25 @@ class App(QWidget):
         ])
         company_layout.addWidget(self.category_filter)
 
+        # Status filter dropdown
+        self.status_filter = QComboBox()
+        self.status_filter.addItems([
+            "All Status",
+            "Live",
+            "Defunct",
+            "Dissolved"
+        ])
+        company_layout.addWidget(self.status_filter)
+
+        # Date range filters
+        self.date_from = QLineEdit()
+        self.date_from.setPlaceholderText("From Date (DD/MM/YYYY)")
+        company_layout.addWidget(self.date_from)
+
+        self.date_to = QLineEdit()
+        self.date_to.setPlaceholderText("To Date (DD/MM/YYYY)")
+        company_layout.addWidget(self.date_to)
+
         self.company_btn = QPushButton("Search Companies")
         self.company_btn.clicked.connect(self.search_companies)
         company_layout.addWidget(self.company_btn)
@@ -54,7 +73,7 @@ class App(QWidget):
         director_layout.addWidget(self.director_type)
 
         self.director_search = QLineEdit()
-        self.director_search.setPlaceholderText("Search directors...")
+        self.director_search.setPlaceholderText("Search directors... (supports: not like mauritius)")
         self.director_search.returnPressed.connect(self.search_directors)
         director_layout.addWidget(self.director_search)
 
@@ -97,6 +116,9 @@ class App(QWidget):
 
         query = self.company_search.text().strip()
         category = self.category_filter.currentText()
+        status_filter = self.status_filter.currentText()
+        date_from = self.date_from.text().strip()
+        date_to = self.date_to.text().strip()
 
         sql = """
         SELECT 
@@ -114,15 +136,38 @@ class App(QWidget):
         """
         params = []
 
+        # Name search
         if query:
             sql += " AND (org_name LIKE ? OR former_org_name LIKE ?)"
             params += [f"%{query}%", f"%{query}%"]
 
+        # Category filter
         if category != "All Categories":
             sql += " AND org_category_code = ?"
             params.append(category)
 
-        sql += " ORDER BY org_name LIMIT 300"
+        # Status filter logic
+        if status_filter == "Live":
+            sql += " AND (UPPER(org_last_status_code) LIKE '%ACTIVE%' OR UPPER(org_last_status_code) = 'LIVE')"
+        elif status_filter == "Defunct":
+            sql += " AND UPPER(org_last_status_code) LIKE '%DEFUNCT%'"
+        elif status_filter == "Dissolved":
+            sql += " AND UPPER(org_last_status_code) LIKE '%DISSOLVED%'"
+
+        # ================= DATE RANGE FILTER =================
+        # Convert DD/MM/YYYY to YYYYMMDD for correct ordering
+        def normalize_date(expr):
+            return f"substr({expr}, 7, 4) || substr({expr}, 4, 2) || substr({expr}, 1, 2)"
+
+        if date_from:
+            sql += f" AND {normalize_date('org_incorp_date')} >= ?"
+            params.append(date_from[6:10] + date_from[3:5] + date_from[0:2])
+
+        if date_to:
+            sql += f" AND {normalize_date('org_incorp_date')} <= ?"
+            params.append(date_to[6:10] + date_to[3:5] + date_to[0:2])
+
+        sql += " ORDER BY org_name"
 
         conn = get_conn()
         cur = conn.cursor()
@@ -150,12 +195,19 @@ class App(QWidget):
         if not self.db_ok:
             return
 
-        query = self.director_search.text().strip()
-        if not query:
+        raw_query = self.director_search.text().strip()
+        if not raw_query:
             QMessageBox.warning(self, "Input Needed", "Enter director search text")
             return
 
         mode = self.director_type.currentText()
+        negate = False
+        query = raw_query
+
+        # Detect "not like"
+        if raw_query.lower().startswith("not like "):
+            negate = True
+            query = raw_query[9:].strip()
 
         base_sql = """
         SELECT c.org_name, ob.name, ob.country, ob.position, ob.address
@@ -164,10 +216,14 @@ class App(QWidget):
         WHERE UPPER(ob.position) = 'DIRECTOR'
         """
 
-        if mode == "By Name":
-            sql = base_sql + " AND ob.name LIKE ? ORDER BY ob.name LIMIT 300"
-        elif mode == "By Country":
-            sql = base_sql + " AND ob.country LIKE ? ORDER BY ob.name LIMIT 300"
+        column = "ob.name"
+        if mode == "By Country":
+            column = "ob.country"
+
+        if negate:
+            sql = base_sql + f" AND {column} NOT LIKE ? ORDER BY ob.name"
+        else:
+            sql = base_sql + f" AND {column} LIKE ? ORDER BY ob.name"
 
         conn = get_conn()
         cur = conn.cursor()
