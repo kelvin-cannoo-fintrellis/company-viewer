@@ -181,6 +181,9 @@ The layout looks like:
 
 EXTRACTION RULES (MUST FOLLOW STRICTLY):
 
+Nature rules:
+- Allowed common values: Private, Public, Civil, Unknown.
+
 Category rules:
 - Allowed common values: DOMESTIC, FOREIGN(DOM BRANCH), AUTHORISED COMPANY
 - If Category is EMPTY, return "".
