@@ -2,6 +2,20 @@ This repository contains:
 - A script for parsing PDF files into JSON
 - A GUI for searching and viewing the parsed information
 
+## Features
+
+- Seach company by name
+- View directors of a company
+- Search director by name or country
+- Sort columns by clicking on column header
+- Filter company by category, status, or registration date
+- Filter with negation for search director by country (e.g., `not like <country>`)
+
+## Setup
+
+At root level, create a .env:
+
+
 ## Project Structure
 
 ```text

@@ -7,4 +7,5 @@ requires-python = ">=3.10"
 dependencies = [
     "pyinstaller>=6.18.0",
     "pyside6>=6.10.1",
+    "tqdm>=4.67.3",
 ]

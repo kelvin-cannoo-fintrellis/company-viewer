@@ -2,6 +2,7 @@ import json
 import sys
 import sqlite3
 from pathlib import Path
+from tqdm import tqdm
 
 DB_PATH = "companies.db"
 
@@ -84,6 +85,84 @@ def load_json(path):
         return json.load(f)
 
 
+# ============================
+# NORMALIZATION FUNCTIONS
+# ============================
+
+def clean_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        value = value.strip()
+        return value if value else ""
+    return value
+
+def normalize_company_details(company):
+    if not company:
+        return None
+
+    org_name = clean_text(company.get("orgName"))
+    if not org_name:
+        return None
+
+    return {
+        "org_name": org_name.upper(),
+        "former_org_name": clean_text(company.get("formerOrgName")),
+
+        "org_no": clean_text(company.get("orgNo")),
+        "org_file_no": clean_text(company.get("orgFileNo")),
+
+        "category_desc": clean_text(company.get("categoryDesc")),
+        "sub_category_desc": clean_text(company.get("subCategoryDesc")),
+
+        "org_category_code": clean_text(company.get("orgCategoryCode")),
+        "org_sub_category_code": clean_text(company.get("orgSubCategoryCode")),
+
+        "company_address": clean_text(company.get("companyAddress")),
+
+        "org_last_status_code": clean_text(company.get("orgLastStaCd") or "").upper(),
+
+        "org_type_code": clean_text(company.get("orgTypeCd")),
+
+        "org_nature_code": clean_text(company.get("orgNatureCd")),
+        "org_nature_cd_code": clean_text(company.get("orgNatureCdCode")),
+
+        "org_incorp_date": clean_text(company.get("orgIncorpDate")),
+        "effective_start_date": clean_text(company.get("effectiveStartDate")),
+        "defunct_date": clean_text(company.get("defunctDate")),
+
+        "total_comprehensive_income": clean_text(company.get("totalComprehensiveIncome")),
+        "winding_up_status": clean_text(company.get("windingUpStatus")),
+    }
+
+def normalize_office_bearer_details(ob):
+    if not ob:
+        return None
+
+    name = clean_text(ob.get("name"))
+    if not name:
+        return None
+
+    # Remove "Director" word
+    name = name.replace("Director", "").strip()
+
+    # Capitalize country
+    country = clean_text(ob.get("country")).upper()
+
+    return {
+        "name": name,
+        "country": country,
+        "position": clean_text(ob.get("position")),
+        "address": clean_text(ob.get("address")),
+        "appointed_date": clean_text(ob.get("appointedDate")),
+    }
+
+
+
+# ============================
+# IMPORT FUNCTION
+# ============================
+
 def import_directory(json_dir):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -105,44 +184,16 @@ def import_directory(json_dir):
 
     conn.execute("BEGIN")
 
-    for file_path in json_files:
+    for file_path in tqdm(json_files, desc="📥 Importing JSON", unit="file"):
         try:
             data = load_json(file_path)
 
-            company = data.get("companyDetails", {})
-            office_bearers = data.get("officeBearers", [])
+            company_raw = data.get("companyDetails", {})
+            office_bearers_raw = data.get("officeBearers", [])
 
-            # ---- Extract company fields ----
-            org_name = company.get("orgName")
-            if not org_name:
+            company = normalize_company_details(company_raw)
+            if not company:
                 continue
-
-            former_org_name = company.get("formerOrgName")
-
-            company_address = company.get("companyAddress")
-            category_desc = company.get("categoryDesc")
-            sub_category_desc = company.get("subCategoryDesc")
-
-            org_category_code = company.get("orgCategoryCode")
-            org_sub_category_code = company.get("orgSubCategoryCode")
-
-            status = company.get("orgLastStaCd")
-            incorp_date = company.get("orgIncorpDate")
-
-            org_no = company.get("orgNo")
-            org_file_no = company.get("orgFileNo")
-            file_no = org_no or org_file_no or data.get("filename")
-
-            effective_start_date = company.get("effectiveStartDate")
-            defunct_date = company.get("defunctDate")
-
-            org_type_code = company.get("orgTypeCd")
-
-            org_nature_code = company.get("orgNatureCd")
-            org_nature_cd_code = company.get("orgNatureCdCode")
-
-            total_comprehensive_income = company.get("totalComprehensiveIncome")
-            winding_up_status = company.get("windingUpStatus")
 
             # ---- Insert company ----
             cur.execute("""
@@ -175,34 +226,34 @@ def import_directory(json_dir):
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                org_name,
-                former_org_name,
+                company["org_name"],
+                company["former_org_name"],
 
-                org_no,
-                org_file_no,
+                company["org_no"],
+                company["org_file_no"],
 
-                category_desc,
-                sub_category_desc,
-                org_category_code,
-                org_sub_category_code,
+                company["category_desc"],
+                company["sub_category_desc"],
+                company["org_category_code"],
+                company["org_sub_category_code"],
 
-                company_address,
+                company["company_address"],
 
-                status,
-                org_type_code,
+                company["org_last_status_code"],
+                company["org_type_code"],
 
-                org_nature_code,
-                org_nature_cd_code,
+                company["org_nature_code"],
+                company["org_nature_cd_code"],
 
-                incorp_date,
-                effective_start_date,
-                defunct_date,
+                company["org_incorp_date"],
+                company["effective_start_date"],
+                company["defunct_date"],
 
-                total_comprehensive_income,
-                winding_up_status
+                company["total_comprehensive_income"],
+                company["winding_up_status"]
             ))
 
-            # --- Resolve company_id reliably ---
+            # Resolve company_id safely
             if cur.lastrowid:
                 company_id = cur.lastrowid
             else:
@@ -210,31 +261,31 @@ def import_directory(json_dir):
                     SELECT id FROM company
                     WHERE org_no = ? OR org_file_no = ?
                     LIMIT 1
-                """, (org_no, org_file_no))
+                """, (company["org_no"], company["org_file_no"]))
                 row = cur.fetchone()
                 if not row:
                     continue
                 company_id = row["id"]
 
-            # ---- Insert Company FTS ----
+            # Insert Company FTS
             cur.execute("""
                 INSERT OR IGNORE INTO company_fts
                 (rowid, org_name, former_org_name, company_address)
                 VALUES (?, ?, ?, ?)
-            """, (company_id, org_name, former_org_name, company_address))
+            """, (
+                company_id,
+                company["org_name"],
+                company["former_org_name"],
+                company["company_address"]
+            ))
 
             inserted_companies += 1
 
             # ---- Insert Office Bearers ----
-            for ob in office_bearers:
-                name = ob.get("name")
-                if not name:
+            for ob_raw in office_bearers_raw:
+                ob = normalize_office_bearer_details(ob_raw)
+                if not ob:
                     continue
-
-                country = ob.get("country")
-                position = ob.get("position")
-                ob_address = ob.get("address")
-                appointed = ob.get("appointedDate")
 
                 cur.execute("""
                     INSERT OR IGNORE INTO office_bearer
@@ -242,18 +293,17 @@ def import_directory(json_dir):
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (
                     company_id,
-                    name,
-                    country,
-                    position,
-                    ob_address,
-                    appointed
+                    ob["name"],
+                    ob["country"],
+                    ob["position"],
+                    ob["address"],
+                    ob["appointed_date"]
                 ))
 
-                # Resolve bearer ID safely
                 cur.execute("""
                     SELECT id FROM office_bearer
                     WHERE company_id = ? AND name = ? AND position = ?
-                """, (company_id, name, position))
+                """, (company_id, ob["name"], ob["position"]))
 
                 bearer_row = cur.fetchone()
                 if not bearer_row:
@@ -266,13 +316,18 @@ def import_directory(json_dir):
                     INSERT OR IGNORE INTO office_bearer_fts
                     (rowid, name, country, position)
                     VALUES (?, ?, ?, ?)
-                """, (bearer_id, name, country, position))
+                """, (
+                    bearer_id,
+                    ob["name"],
+                    ob["country"],
+                    ob["position"]
+                ))
 
                 inserted_bearers += 1
 
         except Exception as e:
             skipped_files += 1
-            print(f"⚠️ Failed {file_path.name}: {e}")
+            print(f"\n⚠️ Failed {file_path.name}: {e}")
 
     conn.commit()
     conn.close()
