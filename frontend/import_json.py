@@ -91,10 +91,10 @@ def load_json(path):
 
 def clean_text(value):
     if value is None:
-        return None
+        return ""
     if isinstance(value, str):
         value = value.strip()
-        return value if value else None
+        return value if value else ""
     return value
 
 def normalize_company_details(company):
