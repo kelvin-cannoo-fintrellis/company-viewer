@@ -181,8 +181,9 @@ The layout looks like:
 
 EXTRACTION RULES (MUST FOLLOW STRICTLY):
 
-Nature rules:
-- Allowed common values: Private, Public, Civil, Unknown.
+File No. rules:
+- Starts with a letter (e.g C, P) followed by a number. E.g., C12, C4235, P15.
+- The File No. is found close to the Name. Do not confuse these two.
 
 Category rules:
 - Allowed common values: DOMESTIC, FOREIGN(DOM BRANCH), AUTHORISED COMPANY
