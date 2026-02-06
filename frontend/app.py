@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTableWidget,
     QTableWidgetItem, QLabel, QComboBox, QMessageBox,
-    QGroupBox
+    QGroupBox, QCheckBox
 )
 from db import get_conn
 
@@ -48,6 +48,22 @@ class App(QWidget):
             "Dissolved"
         ])
         company_layout.addWidget(self.status_filter)
+
+        # Nature multi-select filter
+        self.nature_group = QGroupBox("Nature")
+        nature_layout = QVBoxLayout()
+
+        self.nature_public = QCheckBox("Public")
+        self.nature_private = QCheckBox("Private")
+        self.nature_civil = QCheckBox("Civil")
+
+        nature_layout.addWidget(self.nature_public)
+        nature_layout.addWidget(self.nature_private)
+        nature_layout.addWidget(self.nature_civil)
+
+        self.nature_group.setLayout(nature_layout)
+        company_layout.addWidget(self.nature_group)
+
 
         # Date range filters
         self.date_from = QLineEdit()
@@ -146,7 +162,8 @@ class App(QWidget):
             org_type_code,
             org_category_code,
             company_address,
-            former_org_name
+            former_org_name,
+            org_nature_code
         FROM company
         WHERE 1=1
         """
@@ -169,6 +186,23 @@ class App(QWidget):
             sql += " AND UPPER(org_last_status_code) LIKE '%DEFUNCT%'"
         elif status_filter == "Dissolved":
             sql += " AND UPPER(org_last_status_code) LIKE '%DISSOLVED%'"
+
+        # Nature filter (multi-select)
+        selected_natures = []
+
+        if self.nature_public.isChecked():
+            selected_natures.append("Public")
+
+        if self.nature_private.isChecked():
+            selected_natures.append("Private")
+
+        if self.nature_civil.isChecked():
+            selected_natures.append("Civil")
+
+        if selected_natures:
+            placeholders = ",".join(["?"] * len(selected_natures))
+            sql += f" AND org_nature_code IN ({placeholders})"
+            params.extend(selected_natures)
 
         def normalize(expr):
             return f"substr({expr}, 7, 4) || substr({expr}, 4, 2) || substr({expr}, 1, 2)"
@@ -198,7 +232,8 @@ class App(QWidget):
             "Company Type",
             "Category",
             "Address",
-            "Former Name"
+            "Former Name",
+            "Nature"
         ]
 
         self.populate_company_table(rows, headers)
