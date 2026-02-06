@@ -29,7 +29,7 @@ class App(QWidget):
         self.company_search.returnPressed.connect(self.search_companies)
         company_layout.addWidget(self.company_search)
 
-        # Category multi-select filter
+        # ================= CATEGORY FILTER =================
         self.category_group = QGroupBox("Category")
         category_layout = QVBoxLayout()
 
@@ -37,48 +37,52 @@ class App(QWidget):
         self.cat_global = QCheckBox("GLOBAL")
         self.cat_foreign_dom = QCheckBox("FOREIGN(DOM BRANCH)")
         self.cat_foreign_gbc = QCheckBox("FOREIGN(GBC BRANCH)")
+        self.cat_other = QCheckBox("Other / Unknown")
 
         category_layout.addWidget(self.cat_domestic)
         category_layout.addWidget(self.cat_global)
         category_layout.addWidget(self.cat_foreign_dom)
         category_layout.addWidget(self.cat_foreign_gbc)
+        category_layout.addWidget(self.cat_other)
 
         self.category_group.setLayout(category_layout)
         company_layout.addWidget(self.category_group)
 
-        # Status multi-select filter
+        # ================= STATUS FILTER =================
         self.status_group = QGroupBox("Status")
         status_layout = QVBoxLayout()
 
         self.status_live = QCheckBox("Live")
         self.status_defunct = QCheckBox("Defunct")
         self.status_dissolved = QCheckBox("Dissolved")
+        self.status_other = QCheckBox("Other / Unknown")
 
         status_layout.addWidget(self.status_live)
         status_layout.addWidget(self.status_defunct)
         status_layout.addWidget(self.status_dissolved)
+        status_layout.addWidget(self.status_other)
 
         self.status_group.setLayout(status_layout)
         company_layout.addWidget(self.status_group)
 
-
-        # Nature multi-select filter
+        # ================= NATURE FILTER =================
         self.nature_group = QGroupBox("Nature")
         nature_layout = QVBoxLayout()
 
         self.nature_public = QCheckBox("Public")
         self.nature_private = QCheckBox("Private")
         self.nature_civil = QCheckBox("Civil")
+        self.nature_other = QCheckBox("Other / Unknown")
 
         nature_layout.addWidget(self.nature_public)
         nature_layout.addWidget(self.nature_private)
         nature_layout.addWidget(self.nature_civil)
+        nature_layout.addWidget(self.nature_other)
 
         self.nature_group.setLayout(nature_layout)
         company_layout.addWidget(self.nature_group)
 
-
-        # Date range filter group
+        # ================= DATE FILTER =================
         date_group = QGroupBox("Incorporation Date")
         date_layout = QHBoxLayout()
 
@@ -93,7 +97,7 @@ class App(QWidget):
         date_group.setLayout(date_layout)
         company_layout.addWidget(date_group)
 
-        # Search button for company
+        # Search button
         self.company_btn = QPushButton("Search Companies")
         self.company_btn.clicked.connect(self.search_companies)
         company_layout.addWidget(self.company_btn)
@@ -192,69 +196,106 @@ class App(QWidget):
             sql += " AND (org_name LIKE ? OR former_org_name LIKE ?)"
             params += [f"%{query}%", f"%{query}%"]
 
-        # Category filter
+        # ================= CATEGORY FILTER =================
         selected_categories = []
 
         if self.cat_domestic.isChecked():
             selected_categories.append("DOMESTIC")
-
         if self.cat_global.isChecked():
             selected_categories.append("GLOBAL")
-
         if self.cat_foreign_dom.isChecked():
             selected_categories.append("FOREIGN(DOM BRANCH)")
-
         if self.cat_foreign_gbc.isChecked():
             selected_categories.append("FOREIGN(GBC BRANCH)")
 
-        if selected_categories:
-            placeholders = ",".join(["?"] * len(selected_categories))
-            sql += f" AND org_category_code IN ({placeholders})"
-            params.extend(selected_categories)
+        include_cat_other = self.cat_other.isChecked()
 
-        # Status filter logic
+        if selected_categories or include_cat_other:
+            cat_conditions = []
+
+            if selected_categories:
+                placeholders = ",".join(["?"] * len(selected_categories))
+                cat_conditions.append(f"UPPER(org_category_code) IN ({placeholders})")
+                params.extend(selected_categories)
+
+            if include_cat_other:
+                cat_conditions.append("""
+                    org_category_code IS NULL
+                    OR TRIM(org_category_code) = ''
+                    OR UPPER(org_category_code) NOT IN (
+                        'DOMESTIC','GLOBAL','FOREIGN(DOM BRANCH)','FOREIGN(GBC BRANCH)'
+                    )
+                """)
+
+            sql += " AND (" + " OR ".join(cat_conditions) + ")"
+
+        # ================= STATUS FILTER =================
         selected_status = []
 
         if self.status_live.isChecked():
             selected_status.append("LIVE")
-
         if self.status_defunct.isChecked():
             selected_status.append("DEFUNCT")
-
         if self.status_dissolved.isChecked():
             selected_status.append("DISSOLVED")
 
-        if selected_status:
+        include_status_other = self.status_other.isChecked()
+
+        if selected_status or include_status_other:
             status_conditions = []
 
-        for s in selected_status:
-            if s == "LIVE":
-                status_conditions.append("(UPPER(org_last_status_code) LIKE '%ACTIVE%' OR UPPER(org_last_status_code) = 'LIVE')")
-            elif s == "DEFUNCT":
-                status_conditions.append("UPPER(org_last_status_code) LIKE '%DEFUNCT%'")
-            elif s == "DISSOLVED":
-                status_conditions.append("UPPER(org_last_status_code) LIKE '%DISSOLVED%'")
+            for s in selected_status:
+                if s == "LIVE":
+                    status_conditions.append("(UPPER(org_last_status_code) LIKE '%ACTIVE%' OR UPPER(org_last_status_code) = 'LIVE')")
+                elif s == "DEFUNCT":
+                    status_conditions.append("UPPER(org_last_status_code) LIKE '%DEFUNCT%'")
+                elif s == "DISSOLVED":
+                    status_conditions.append("UPPER(org_last_status_code) LIKE '%DISSOLVED%'")
+
+            if include_status_other:
+                status_conditions.append("""
+                    org_last_status_code IS NULL
+                    OR TRIM(org_last_status_code) = ''
+                    OR (
+                        UPPER(org_last_status_code) NOT LIKE '%ACTIVE%'
+                        AND UPPER(org_last_status_code) NOT LIKE '%LIVE%'
+                        AND UPPER(org_last_status_code) NOT LIKE '%DEFUNCT%'
+                        AND UPPER(org_last_status_code) NOT LIKE '%DISSOLVED%'
+                    )
+                """)
 
             sql += " AND (" + " OR ".join(status_conditions) + ")"
 
-
-        # Nature filter (multi-select)
+        # ================= NATURE FILTER =================
         selected_natures = []
 
         if self.nature_public.isChecked():
-            selected_natures.append("Public")
-
+            selected_natures.append("PUBLIC")
         if self.nature_private.isChecked():
-            selected_natures.append("Private")
-
+            selected_natures.append("PRIVATE")
         if self.nature_civil.isChecked():
-            selected_natures.append("Civil")
+            selected_natures.append("CIVIL")
 
-        if selected_natures:
-            placeholders = ",".join(["?"] * len(selected_natures))
-            sql += f" AND org_nature_code IN ({placeholders})"
-            params.extend(selected_natures)
+        include_nature_other = self.nature_other.isChecked()
 
+        if selected_natures or include_nature_other:
+            nature_conditions = []
+
+            if selected_natures:
+                placeholders = ",".join(["?"] * len(selected_natures))
+                nature_conditions.append(f"UPPER(org_nature_code) IN ({placeholders})")
+                params.extend(selected_natures)
+
+            if include_nature_other:
+                nature_conditions.append("""
+                    org_nature_code IS NULL
+                    OR TRIM(org_nature_code) = ''
+                    OR UPPER(org_nature_code) NOT IN ('PUBLIC','PRIVATE','CIVIL')
+                """)
+
+            sql += " AND (" + " OR ".join(nature_conditions) + ")"
+
+        # ================= DATE FILTER =================
         def normalize(expr):
             return f"substr({expr}, 7, 4) || substr({expr}, 4, 2) || substr({expr}, 1, 2)"
 
@@ -305,7 +346,6 @@ class App(QWidget):
         negate = False
         query = raw_query
 
-        # Detect "not like"
         if raw_query.lower().startswith("not like "):
             negate = True
             query = raw_query[9:].strip()
@@ -337,7 +377,7 @@ class App(QWidget):
         self.populate_director_table(rows, headers)
         self.status.setText(f"{len(rows)} director result(s).")
 
-    # ================= LOAD DIRECTORS FOR SELECTED COMPANY =================
+    # ================= LOAD DIRECTORS =================
     def load_directors_for_selected_company(self):
         selected = self.company_table.selectedItems()
         if not selected:
@@ -374,7 +414,7 @@ class App(QWidget):
 
     # ================= TABLE POPULATORS =================
     def populate_company_table(self, rows, headers):
-        self.company_table.setSortingEnabled(False)  # prevent flicker while filling
+        self.company_table.setSortingEnabled(False)
         self.company_table.clear()
         self.company_table.setRowCount(0)
         self.company_table.setColumnCount(len(headers))
