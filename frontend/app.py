@@ -35,7 +35,8 @@ class App(QWidget):
             "All Categories",
             "DOMESTIC",
             "GLOBAL",
-            "FOREIGN(DOM BRANCH)"
+            "FOREIGN(DOM BRANCH)",
+            "FOREIGN(GBC BRANCH)"
         ])
         company_layout.addWidget(self.category_filter)
 
