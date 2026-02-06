@@ -5,7 +5,6 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QLabel, QComboBox, QMessageBox,
     QGroupBox
 )
-from PySide6.QtCore import Qt
 from db import get_conn
 
 
@@ -92,6 +91,7 @@ class App(QWidget):
         self.company_table = QTableWidget()
         self.company_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.company_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.company_table.setSortingEnabled(True)
         self.company_table.itemSelectionChanged.connect(self.load_directors_for_selected_company)
         layout.addWidget(self.company_table)
 
@@ -100,6 +100,7 @@ class App(QWidget):
 
         self.director_table = QTableWidget()
         self.director_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.director_table.setSortingEnabled(True)
         layout.addWidget(self.director_table)
 
         self.db_ok = self.check_db()
@@ -286,6 +287,7 @@ class App(QWidget):
 
     # ================= TABLE POPULATORS =================
     def populate_company_table(self, rows, headers):
+        self.company_table.setSortingEnabled(False)  # prevent flicker while filling
         self.company_table.clear()
         self.company_table.setRowCount(0)
         self.company_table.setColumnCount(len(headers))
@@ -300,7 +302,10 @@ class App(QWidget):
             for c in range(len(headers)):
                 self.company_table.setItem(r, c, QTableWidgetItem(str(row[c] or "")))
 
+        self.company_table.setSortingEnabled(True)
+
     def populate_director_table(self, rows, headers):
+        self.director_table.setSortingEnabled(False)
         self.director_table.clear()
         self.director_table.setRowCount(0)
         self.director_table.setColumnCount(len(headers))
@@ -314,6 +319,8 @@ class App(QWidget):
         for r, row in enumerate(rows):
             for c in range(len(headers)):
                 self.director_table.setItem(r, c, QTableWidgetItem(str(row[c] or "")))
+
+        self.director_table.setSortingEnabled(True)
 
 
 if __name__ == "__main__":
