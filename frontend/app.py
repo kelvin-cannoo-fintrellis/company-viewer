@@ -135,6 +135,7 @@ class App(QWidget):
         date_from = self.date_from.text().strip()
         date_to = self.date_to.text().strip()
 
+        # TODO: Replace org_category_code with category_desc later once database issue is fixed
         sql = """
         SELECT 
             id,
@@ -143,7 +144,7 @@ class App(QWidget):
             org_last_status_code,
             org_incorp_date,
             org_type_code,
-            category_desc,
+            org_category_code,
             company_address,
             former_org_name
         FROM company
