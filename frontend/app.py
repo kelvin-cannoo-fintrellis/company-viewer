@@ -29,25 +29,38 @@ class App(QWidget):
         self.company_search.returnPressed.connect(self.search_companies)
         company_layout.addWidget(self.company_search)
 
-        self.category_filter = QComboBox()
-        self.category_filter.addItems([
-            "All Categories",
-            "DOMESTIC",
-            "GLOBAL",
-            "FOREIGN(DOM BRANCH)",
-            "FOREIGN(GBC BRANCH)"
-        ])
-        company_layout.addWidget(self.category_filter)
+        # Category multi-select filter
+        self.category_group = QGroupBox("Category")
+        category_layout = QVBoxLayout()
 
-        # Status filter dropdown
-        self.status_filter = QComboBox()
-        self.status_filter.addItems([
-            "All Status",
-            "Live",
-            "Defunct",
-            "Dissolved"
-        ])
-        company_layout.addWidget(self.status_filter)
+        self.cat_domestic = QCheckBox("DOMESTIC")
+        self.cat_global = QCheckBox("GLOBAL")
+        self.cat_foreign_dom = QCheckBox("FOREIGN(DOM BRANCH)")
+        self.cat_foreign_gbc = QCheckBox("FOREIGN(GBC BRANCH)")
+
+        category_layout.addWidget(self.cat_domestic)
+        category_layout.addWidget(self.cat_global)
+        category_layout.addWidget(self.cat_foreign_dom)
+        category_layout.addWidget(self.cat_foreign_gbc)
+
+        self.category_group.setLayout(category_layout)
+        company_layout.addWidget(self.category_group)
+
+        # Status multi-select filter
+        self.status_group = QGroupBox("Status")
+        status_layout = QVBoxLayout()
+
+        self.status_live = QCheckBox("Live")
+        self.status_defunct = QCheckBox("Defunct")
+        self.status_dissolved = QCheckBox("Dissolved")
+
+        status_layout.addWidget(self.status_live)
+        status_layout.addWidget(self.status_defunct)
+        status_layout.addWidget(self.status_dissolved)
+
+        self.status_group.setLayout(status_layout)
+        company_layout.addWidget(self.status_group)
+
 
         # Nature multi-select filter
         self.nature_group = QGroupBox("Nature")
@@ -65,15 +78,22 @@ class App(QWidget):
         company_layout.addWidget(self.nature_group)
 
 
-        # Date range filters
+        # Date range filter group
+        date_group = QGroupBox("Incorporation Date")
+        date_layout = QHBoxLayout()
+
         self.date_from = QLineEdit()
-        self.date_from.setPlaceholderText("From Date (DD/MM/YYYY)")
-        company_layout.addWidget(self.date_from)
+        self.date_from.setPlaceholderText("From (DD/MM/YYYY)")
+        date_layout.addWidget(self.date_from)
 
         self.date_to = QLineEdit()
-        self.date_to.setPlaceholderText("To Date (DD/MM/YYYY)")
-        company_layout.addWidget(self.date_to)
+        self.date_to.setPlaceholderText("To (DD/MM/YYYY)")
+        date_layout.addWidget(self.date_to)
 
+        date_group.setLayout(date_layout)
+        company_layout.addWidget(date_group)
+
+        # Search button for company
         self.company_btn = QPushButton("Search Companies")
         self.company_btn.clicked.connect(self.search_companies)
         company_layout.addWidget(self.company_btn)
@@ -146,8 +166,6 @@ class App(QWidget):
             return
 
         query = self.company_search.text().strip()
-        category = self.category_filter.currentText()
-        status_filter = self.status_filter.currentText()
         date_from = self.date_from.text().strip()
         date_to = self.date_to.text().strip()
 
@@ -175,17 +193,50 @@ class App(QWidget):
             params += [f"%{query}%", f"%{query}%"]
 
         # Category filter
-        if category != "All Categories":
-            sql += " AND org_category_code = ?"
-            params.append(category)
+        selected_categories = []
+
+        if self.cat_domestic.isChecked():
+            selected_categories.append("DOMESTIC")
+
+        if self.cat_global.isChecked():
+            selected_categories.append("GLOBAL")
+
+        if self.cat_foreign_dom.isChecked():
+            selected_categories.append("FOREIGN(DOM BRANCH)")
+
+        if self.cat_foreign_gbc.isChecked():
+            selected_categories.append("FOREIGN(GBC BRANCH)")
+
+        if selected_categories:
+            placeholders = ",".join(["?"] * len(selected_categories))
+            sql += f" AND org_category_code IN ({placeholders})"
+            params.extend(selected_categories)
 
         # Status filter logic
-        if status_filter == "Live":
-            sql += " AND (UPPER(org_last_status_code) LIKE '%ACTIVE%' OR UPPER(org_last_status_code) = 'LIVE')"
-        elif status_filter == "Defunct":
-            sql += " AND UPPER(org_last_status_code) LIKE '%DEFUNCT%'"
-        elif status_filter == "Dissolved":
-            sql += " AND UPPER(org_last_status_code) LIKE '%DISSOLVED%'"
+        selected_status = []
+
+        if self.status_live.isChecked():
+            selected_status.append("LIVE")
+
+        if self.status_defunct.isChecked():
+            selected_status.append("DEFUNCT")
+
+        if self.status_dissolved.isChecked():
+            selected_status.append("DISSOLVED")
+
+        if selected_status:
+            status_conditions = []
+
+        for s in selected_status:
+            if s == "LIVE":
+                status_conditions.append("(UPPER(org_last_status_code) LIKE '%ACTIVE%' OR UPPER(org_last_status_code) = 'LIVE')")
+            elif s == "DEFUNCT":
+                status_conditions.append("UPPER(org_last_status_code) LIKE '%DEFUNCT%'")
+            elif s == "DISSOLVED":
+                status_conditions.append("UPPER(org_last_status_code) LIKE '%DISSOLVED%'")
+
+            sql += " AND (" + " OR ".join(status_conditions) + ")"
+
 
         # Nature filter (multi-select)
         selected_natures = []
