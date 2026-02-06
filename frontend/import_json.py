@@ -2,6 +2,7 @@ import json
 import sys
 import sqlite3
 from pathlib import Path
+from tqdm import tqdm
 
 DB_PATH = "companies.db"
 
@@ -183,7 +184,7 @@ def import_directory(json_dir):
 
     conn.execute("BEGIN")
 
-    for file_path in json_files:
+    for file_path in tqdm(json_files, desc="📥 Importing JSON", unit="file"):
         try:
             data = load_json(file_path)
 
@@ -326,7 +327,7 @@ def import_directory(json_dir):
 
         except Exception as e:
             skipped_files += 1
-            print(f"⚠️ Failed {file_path.name}: {e}")
+            print(f"\n⚠️ Failed {file_path.name}: {e}")
 
     conn.commit()
     conn.close()
