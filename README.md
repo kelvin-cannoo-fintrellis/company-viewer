@@ -1,36 +1,56 @@
-At root level, create a .env:
+This repository contains:
+- A script for parsing PDF files into JSON
+- A GUI for searching and viewing the parsed information
 
-```
-LLM_BACKEND=ollama
-# or: openai
+## Project Structure
 
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4.1-mini
-OLLAMA_MODEL=qwen2.5:3b
-OLLAMA_URL=http://localhost:11434
-```
+```text
+.
+├── pdf/            # Input PDFs (must be added manually)
+├── output_json/    # Generated JSON files
+├── frontend/       # GUI and database scripts
+````
 
-To run script for parsing the PDFs:
+## Prerequisites
+
+* Rust (cargo)
+* Python with `uv`
+
+## Installation
+
+After cloning the repository:
 
 ```bash
-# Uses all defaults
+cd company-viewer
+cp .env.example .env
+cargo build
+```
+
+> Update `.env` with any required environment variables before running the parser.
+
+## Usage
+
+### Parse PDFs to JSON
+
+Place all PDF files in a `pdf/` directory at the project root, then run:
+
+```bash
 cargo run
-
-# Override some or all arguments
-cargo run -- \
-  --input-dir pdfs \
-  --output-json-dir json_out \
-  --output-markdown-dir md_out
 ```
 
-After parsing PDFs, to create SQLite database from the JSONs:
+This will generate an `output_json/` directory containing the parsed JSON files. If you have set `DEBUGGING=true` in your `.env`, `output_markdown/` directory will also be created.
+
+### Build the SQLite database
 
 ```bash
+cd frontend
 uv run python import_json.py ../output_json
 ```
 
-Run GUI:
+### Run the GUI
 
 ```bash
 uv run app.py
 ```
+
+The GUI will launch using the generated SQLite database.
